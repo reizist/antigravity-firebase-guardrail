@@ -1,0 +1,162 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`Google Chat > Cards v2 のペイロード 1`] = `
+{
+  "cardsV2": [
+    {
+      "card": {
+        "header": {
+          "subtitle": "2 件",
+          "title": "📰 競合動向 のまとめ",
+        },
+        "sections": [
+          {
+            "collapsible": false,
+            "widgets": [
+              {
+                "decoratedText": {
+                  "text": "<b>A社が ＜新製品＞ を発表</b>",
+                  "topLabel": "Example ・ 関連度 92",
+                  "wrapText": true,
+                },
+              },
+              {
+                "textParagraph": {
+                  "text": "要約 A",
+                },
+              },
+              {
+                "buttonList": {
+                  "buttons": [
+                    {
+                      "onClick": {
+                        "openLink": {
+                          "url": "https://example.com/a",
+                        },
+                      },
+                      "text": "記事を開く",
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+          {
+            "collapsible": false,
+            "widgets": [
+              {
+                "decoratedText": {
+                  "text": "<b>B社 & C社が提携</b>",
+                  "topLabel": "関連度 70",
+                  "wrapText": true,
+                },
+              },
+              {
+                "buttonList": {
+                  "buttons": [
+                    {
+                      "onClick": {
+                        "openLink": {
+                          "url": "https://example.com/b",
+                        },
+                      },
+                      "text": "記事を開く",
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+          {
+            "widgets": [
+              {
+                "buttonList": {
+                  "buttons": [
+                    {
+                      "onClick": {
+                        "openLink": {
+                          "url": "https://fga-news-watcher.web.app",
+                        },
+                      },
+                      "text": "news-watcher で一覧を見る",
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        ],
+      },
+      "cardId": "news-watcher-digest",
+    },
+  ],
+  "text": "📰 競合動向 のまとめ",
+}
+`;
+
+exports[`Slack > Block Kit のペイロード（mrkdwn の特殊文字をエスケープする） 1`] = `
+{
+  "blocks": [
+    {
+      "text": {
+        "emoji": true,
+        "text": "📰 競合動向 のまとめ",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "text": {
+        "text": "*<https://example.com/a|A社が &lt;新製品&gt; を発表>*
+要約 A",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "elements": [
+        {
+          "text": "Example ・ 関連度 92",
+          "type": "mrkdwn",
+        },
+      ],
+      "type": "context",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "text": {
+        "text": "*<https://example.com/b|B社 &amp; C社が提携>*",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "elements": [
+        {
+          "text": "関連度 70",
+          "type": "mrkdwn",
+        },
+      ],
+      "type": "context",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "elements": [
+        {
+          "text": "<https://fga-news-watcher.web.app|news-watcher で一覧を見る>",
+          "type": "mrkdwn",
+        },
+      ],
+      "type": "context",
+    },
+  ],
+  "text": "📰 競合動向 のまとめ（2 件）",
+}
+`;

@@ -1,0 +1,25 @@
+name: Feature request
+description: 改善や、新しいガードレール・機能の提案。
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: どんな問題を解決しますか
+      description: 仕組みより先に、困っていること — いま何がうまくいかないか、何に手間がかかっているか。
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 提案
+      description: こうなってほしい、という内容。おおまかで構いません。PR も歓迎です（CONTRIBUTING.md）。
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 考えたほかの方法
+      description: 「いまは手作業で … している」も含めて。
+    validations:
+      required: false

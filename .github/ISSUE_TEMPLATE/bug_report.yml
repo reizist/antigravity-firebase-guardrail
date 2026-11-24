@@ -1,0 +1,66 @@
+name: Bug report
+description: うまく動かないところがあれば。下の項目があると、1 往復で原因を絞れます。
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        報告ありがとうございます。先に
+        [docs/runbook.md](https://github.com/reizist/antigravity-firebase-guardrail/blob/main/docs/runbook.md) の「ハマりどころ」と
+        [docs/platform_design.md](https://github.com/reizist/antigravity-firebase-guardrail/blob/main/docs/platform_design.md) の §9 を見てください。既に対処が書いてあるかもしれません。
+
+        **実在のプロジェクト ID・メールアドレス・Webhook URL・トークンは貼らないでください**（`<project>` などに置き換えてください）。
+  - type: textarea
+    id: what
+    attributes:
+      label: 何が起きましたか。何を期待していましたか
+      description: 実行したコマンド（または AI への依頼）と、出力・エラーをそのまま書いてください。
+      placeholder: |
+        実行: ./scripts/deploy_platform.sh --plan
+        結果: ...
+        期待: ...
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: どの部分ですか
+      options:
+        - 初回構築（bootstrap_project.sh / deploy_platform.sh / Terraform）
+        - アプリのデプロイ（deploy_app.sh / firebase deploy）
+        - GitHub Actions（ci.yml / deploy.yml）
+        - ポリシーチェック（pnpm policy）
+        - Agent Skill（init-firebase-platform / build-firebase-app）
+        - news-watcher（見本アプリ）
+        - ドキュメント
+        - わからない
+    validations:
+      required: true
+  - type: textarea
+    id: versions
+    attributes:
+      label: バージョン
+      description: 関係するものだけで構いません。
+      render: text
+      placeholder: |
+        node -v            →
+        pnpm -v            →
+        terraform version  →
+        pnpm exec firebase --version →
+        gcloud --version   →
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS
+      placeholder: "macOS 15 · Ubuntu 24.04 · WSL2 (Ubuntu)"
+    validations:
+      required: true
+  - type: input
+    id: agent
+    attributes:
+      label: 使った AI エージェント（Skill に関する報告の場合）
+      placeholder: "Antigravity / Gemini CLI / そのほか"
+    validations:
+      required: false

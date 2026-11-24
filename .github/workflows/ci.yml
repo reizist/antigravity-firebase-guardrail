@@ -1,0 +1,82 @@
+# ==============================================================================
+# PR と main で実行する検査（Google Cloud の認証情報は使わない）
+#   policy    : ポリシーチェック（台帳・firebase.json の担当範囲・HTTP 関数の禁止・Rules・依存・秘密情報）と単体テスト
+#   terraform : fmt と validate
+#   osv       : OSV-Scanner でロックファイルを確認（既知の脆弱性・悪性パッケージ）
+# ==============================================================================
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  policy:
+    name: policy / test / build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - name: pnpm を有効にする（版は package.json の packageManager）
+        run: corepack enable pnpm
+      - name: 依存をインストール（ロックファイルと違えば失敗。インストール時のスクリプトは許可したものだけ）
+        run: pnpm install --frozen-lockfile
+      - name: ポリシーチェック
+        run: pnpm policy
+      - name: ポリシーチェックのテスト
+        run: pnpm policy:test
+      - name: 型チェック
+        run: pnpm typecheck
+      - name: 単体テスト
+        run: pnpm test
+      - name: ビルド（関数は esbuild で 1 ファイルにまとめる）
+        run: pnpm build
+      - name: スクリプトの検査
+        run: shellcheck --severity=warning scripts/*.sh
+
+  terraform:
+    name: terraform fmt / validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_wrapper: false
+      - run: terraform fmt -check -recursive platform/terraform
+      - name: validate（bootstrap）
+        run: |
+          terraform -chdir=platform/terraform/bootstrap init -backend=false -input=false
+          terraform -chdir=platform/terraform/bootstrap validate
+      - name: validate（platform）
+        run: |
+          terraform -chdir=platform/terraform init -backend=false -input=false
+          terraform -chdir=platform/terraform validate
+
+  osv:
+    name: osv-scanner
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: google/osv-scanner-action/osv-scanner-action@32d3cd482bdadfb38b186c0ad1b031902d55d932 # v2.7.1
+        with:
+          scan-args: |-
+            --lockfile=pnpm-lock.yaml

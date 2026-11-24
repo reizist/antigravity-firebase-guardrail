@@ -1,0 +1,201 @@
+# ==============================================================================
+# main にマージされた変更を、共有プロジェクトに反映する
+#   platform : platform/** か apps/*/firestore.rules が変わったら、Terraform SA で plan → 承認 → apply
+#              （テナントの払い出しと Security Rules の反映。Rules を反映できるのはこの経路だけ）
+#   apps     : apps/<app>/** が変わったアプリだけを、デプロイ SA（fga-deployer）で firebase deploy
+#              （Hosting・Functions・インデックス。Rules は含めない）
+#
+# 必要な設定（docs/runbook.md §6）:
+#   - リポジトリの変数 GCP_WIF_PROVIDER（未設定の間は何もしない）
+#   - Environment "platform"（Required reviewers にエンジニア組織。apply の前に plan を確認して承認する）
+# 認証は Workload Identity Federation（鍵なし）。SA を借用できるのは main で動くこのワークフローだけ。
+# ==============================================================================
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: platform（Terraform）を反映する
+        type: boolean
+        default: false
+      app:
+        description: デプロイするアプリの id（all で全アプリ。空ならデプロイしない）
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  changes:
+    name: 変更の検出
+    if: vars.GCP_WIF_PROVIDER != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      platform: ${{ steps.detect.outputs.platform }}
+      apps: ${{ steps.detect.outputs.apps }}
+      project_id: ${{ steps.detect.outputs.project_id }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: detect
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          INPUT_PLATFORM: ${{ inputs.platform }}
+          INPUT_APP: ${{ inputs.app }}
+        run: |
+          set -euo pipefail
+          all_apps() { find apps -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | sort; }
+          platform=false
+          apps=""
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            platform="$INPUT_PLATFORM"
+            if [[ "$INPUT_APP" == "all" ]]; then
+              apps="$(all_apps)"
+            elif [[ -n "$INPUT_APP" ]]; then
+              [[ "$INPUT_APP" =~ ^[a-z][a-z0-9-]{2,18}[a-z0-9]$ && -d "apps/$INPUT_APP" ]] || { echo "::error::apps/$INPUT_APP がありません"; exit 1; }
+              apps="$INPUT_APP"
+            fi
+          elif [[ -z "$BEFORE" || "$BEFORE" =~ ^0+$ ]] || ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            # 比べる相手がない（最初の push など）ときは、すべて反映する
+            platform=true
+            apps="$(all_apps)"
+          else
+            changed="$(git diff --name-only "$BEFORE" "$GITHUB_SHA")"
+            if grep -qE '^(platform/|apps/[^/]+/firestore\.rules$)' <<<"$changed"; then platform=true; fi
+            if grep -qE '^(platform/config\.json|pnpm-lock\.yaml|scripts/deploy_app\.sh)$' <<<"$changed"; then
+              # 全アプリのビルド結果・デプロイ方法に関わる変更
+              apps="$(all_apps)"
+            else
+              apps="$(grep -E '^apps/[^/]+/' <<<"$changed" | grep -vE '^apps/[^/]+/firestore\.rules$' | cut -d/ -f2 | sort -u || true)"
+            fi
+          fi
+          # 削除されたアプリは除く
+          apps_json="$(for app in $apps; do [[ -d "apps/$app" ]] && echo "$app"; done | jq -R . | jq -sc .)"
+          {
+            echo "platform=$platform"
+            echo "apps=$apps_json"
+            echo "project_id=$(jq -r .project_id platform/config.json)"
+          } >> "$GITHUB_OUTPUT"
+          echo "platform=$platform apps=$apps_json"
+
+  platform-plan:
+    name: platform / terraform plan
+    needs: changes
+    if: needs.changes.outputs.platform == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TF_IN_AUTOMATION: "true"
+      TF_VAR_google_oauth_client_id: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+      TF_VAR_google_oauth_client_secret: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+      TF_VAR_enable_budgets: ${{ vars.ENABLE_BUDGETS || 'false' }}
+      TF_VAR_billing_account: ${{ vars.BILLING_ACCOUNT }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: terraform-sa@${{ needs.changes.outputs.project_id }}.iam.gserviceaccount.com
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_wrapper: false
+      - run: terraform -chdir=platform/terraform init -input=false -backend-config="bucket=${PROJECT_ID}-tfstate"
+        env:
+          PROJECT_ID: ${{ needs.changes.outputs.project_id }}
+      - name: terraform plan（この内容を確認してから、platform-apply を承認する）
+        run: terraform -chdir=platform/terraform plan -input=false -lock-timeout=5m
+
+  platform-apply:
+    name: platform / terraform apply
+    needs: [changes, platform-plan]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Required reviewers を設定した Environment。承認されるまでこのジョブは始まらない
+    environment: platform
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TF_IN_AUTOMATION: "true"
+      TF_VAR_google_oauth_client_id: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+      TF_VAR_google_oauth_client_secret: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+      TF_VAR_enable_budgets: ${{ vars.ENABLE_BUDGETS || 'false' }}
+      TF_VAR_billing_account: ${{ vars.BILLING_ACCOUNT }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: terraform-sa@${{ needs.changes.outputs.project_id }}.iam.gserviceaccount.com
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_wrapper: false
+      - run: terraform -chdir=platform/terraform init -input=false -backend-config="bucket=${PROJECT_ID}-tfstate"
+        env:
+          PROJECT_ID: ${{ needs.changes.outputs.project_id }}
+      - name: terraform apply（テナントの払い出し・Security Rules の反映）
+        run: terraform -chdir=platform/terraform apply -input=false -auto-approve -lock-timeout=5m
+
+  apps:
+    name: app / ${{ matrix.app }}
+    needs: [changes, platform-apply]
+    # platform の反映が要るときは、その後で（新しいアプリのテナントが先に必要なため）。失敗・却下されたらデプロイしない
+    if: >-
+      always() &&
+      needs.changes.result == 'success' &&
+      needs.changes.outputs.apps != '[]' &&
+      (needs.platform-apply.result == 'success' || needs.platform-apply.result == 'skipped') &&
+      (needs.changes.outputs.platform != 'true' || needs.platform-apply.result == 'success')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        app: ${{ fromJSON(needs.changes.outputs.apps) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - run: corepack enable pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: ポリシーチェック（デプロイの直前にもう一度）
+        run: pnpm policy
+      - name: テストとビルド
+        run: |
+          pnpm test
+          pnpm build
+      # 認証情報は、ビルド・テストが終わってから取得する
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: fga-deployer@${{ needs.changes.outputs.project_id }}.iam.gserviceaccount.com
+      - name: firebase deploy（Hosting・Functions・インデックス。Rules は含めない）
+        env:
+          APP_ID: ${{ matrix.app }}
+        run: ./scripts/deploy_app.sh "$APP_ID"

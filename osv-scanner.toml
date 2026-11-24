@@ -1,0 +1,43 @@
+# ==============================================================================
+# OSV-Scanner の例外（CI の osv ジョブが pnpm-lock.yaml を確認するときに読む）
+#   例外にできるのは「上流の修正待ちで、この基盤の使い方では影響しない」と確かめたものだけ。
+#   必ず理由と期限（ignoreUntil）を書く。期限が来たら CI が再び失敗するので、その時点で見直す。
+#   追加・延長はエンジニア組織がレビューする（CODEOWNERS）。
+# ==============================================================================
+
+# ---- firebase（画面の JS SDK）→ @firebase/firestore → @grpc/grpc-js 1.9.x -------
+#   grpc-js は Node.js 向けのビルドでだけ使われ、ブラウザ向けのバンドル（web/dist/app.js）には含まれない。
+#   どちらも gRPC サーバー側の問題で、この基盤は gRPC サーバーを動かさない。
+[[IgnoredVulns]]
+id = "GHSA-m9gg-hp2v-232j"
+ignoreUntil = 2027-02-28T00:00:00Z
+reason = "firebase JS SDK の推移的依存。ブラウザ向けバンドルに含まれず、gRPC サーバーの認証コンテキストの問題で該当しない"
+
+[[IgnoredVulns]]
+id = "GHSA-f596-whhp-79r4"
+ignoreUntil = 2027-02-28T00:00:00Z
+reason = "firebase JS SDK の推移的依存。ブラウザ向けバンドルに含まれず、gRPC サーバーのエラーメッセージの問題で該当しない"
+
+# ---- firebase-admin → google-gax → gaxios → rimraf → glob / minimatch -----------
+#   関数の実行時の依存ツリーに入るが、glob のパターンに外部からの入力を渡す経路がない。
+#   修正版はメジャーバージョンが違い、上流（gaxios）の更新待ち。
+[[IgnoredVulns]]
+id = "GHSA-3g3m-2fjr-6pw4"
+ignoreUntil = 2027-02-28T00:00:00Z
+reason = "firebase-admin / firebase-tools の推移的依存（rimraf 経由）。glob に外部入力を渡さない。上流の更新待ち"
+
+[[IgnoredVulns]]
+id = "GHSA-g3hv-75wg-m249"
+ignoreUntil = 2027-02-28T00:00:00Z
+reason = "firebase-admin / firebase-tools の推移的依存（rimraf → glob 経由）。パターンに外部入力を渡さない。上流の更新待ち"
+
+# ---- firebase-tools（開発・デプロイ用の CLI。関数のバンドルにも画面にも含まれない） ----
+[[IgnoredVulns]]
+id = "GHSA-8988-4f7v-96qf"
+ignoreUntil = 2027-02-28T00:00:00Z
+reason = "firebase-tools の推移的依存（@opentelemetry/core 1.x）。CLI は外部からのリクエストを受けない。上流の更新待ち"
+
+[[IgnoredVulns]]
+id = "GHSA-w5hq-g745-h8pq"
+ignoreUntil = 2027-02-28T00:00:00Z
+reason = "firebase-tools の推移的依存（gaxios 6 → uuid 9）。buf を渡す v3/v5/v6 の呼び出しがない。上流の更新待ち"

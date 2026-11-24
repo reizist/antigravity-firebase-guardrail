@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>News Watcher</title>
+  <link rel="stylesheet" href="/style.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <header class="app-header">
+    <h1 class="app-title">📰 News Watcher</h1>
+    <nav class="tabs" aria-label="画面の切り替え" hidden id="nav">
+      <a href="#articles" data-view="articles">記事</a>
+      <a href="#topics" data-view="topics">トピック</a>
+      <a href="#digests" data-view="digests">配信設定</a>
+      <a href="#sources" data-view="sources">情報源</a>
+      <a href="#deliveries" data-view="deliveries">配信履歴</a>
+    </nav>
+    <div class="user" id="user" hidden>
+      <span id="user-email"></span>
+      <span class="badge" id="user-role"></span>
+      <button type="button" id="sign-out" class="link">ログアウト</button>
+    </div>
+  </header>
+
+  <!-- 処理結果のお知らせ（画面上部の決まった場所に出す。読み上げソフトにも伝える） -->
+  <div class="status-region" role="status" aria-live="polite" id="status"></div>
+
+  <main>
+    <!-- ログイン前 -->
+    <section id="view-signin" class="signin" hidden>
+      <h2>社内アカウントでログイン</h2>
+      <p>社内の Google アカウントでログインしてください。</p>
+      <button type="button" class="primary" id="sign-in">Google でログイン</button>
+      <p class="error" id="signin-error" hidden></p>
+    </section>
+
+    <!-- 記事一覧 -->
+    <section id="view-articles" hidden aria-labelledby="articles-title">
+      <div class="section-head">
+        <h2 id="articles-title">記事</h2>
+        <p class="muted" id="articles-count"></p>
+      </div>
+      <form class="filters" id="article-filters">
+        <label>トピック
+          <select name="topic"><option value="">すべて</option></select>
+        </label>
+        <label>情報源
+          <select name="source"><option value="">すべて</option></select>
+        </label>
+        <label>スコア <output name="minScoreOut">0</output> 以上
+          <input type="range" name="minScore" min="0" max="100" step="5" value="0">
+        </label>
+        <label class="grow">キーワード
+          <input type="search" name="q" placeholder="タイトル・要約で絞り込み">
+        </label>
+      </form>
+      <ul class="cards" id="article-list"></ul>
+    </section>
+
+    <!-- トピック -->
+    <section id="view-topics" hidden aria-labelledby="topics-title">
+      <div class="section-head">
+        <h2 id="topics-title">トピック</h2>
+        <p class="muted">関心のあるテーマ。キーワードで Google ニュースを自動で検索し、集めた記事を Gemini がテーマとの関連度で採点します。</p>
+        <button type="button" class="primary push" id="add-topic" hidden>トピックを追加</button>
+      </div>
+      <ul class="cards" id="topic-list"></ul>
+    </section>
+
+    <!-- 配信設定 -->
+    <section id="view-digests" hidden aria-labelledby="digests-title">
+      <div class="section-head">
+        <h2 id="digests-title">配信設定</h2>
+        <p class="muted">どのトピックの記事を、何件、いつ、どこへ配信するか。保存すると次の配信から反映されます。</p>
+        <button type="button" class="primary push" id="add-digest" hidden>配信設定を追加</button>
+      </div>
+      <ul class="cards" id="digest-list"></ul>
+    </section>
+
+    <!-- 情報源 -->
+    <section id="view-sources" hidden aria-labelledby="sources-title">
+      <div class="section-head">
+        <h2 id="sources-title">情報源</h2>
+        <p class="muted">RSS・Web ページの URL か、Google ニュースの検索語を登録すると、毎時取得して採点します。</p>
+      </div>
+
+      <form class="card add-source" id="add-source" hidden>
+        <h3>情報源を追加</h3>
+        <fieldset class="kind">
+          <legend>種類</legend>
+          <label><input type="radio" name="kind" value="url" checked> URL（RSS・Web ページ）</label>
+          <label><input type="radio" name="kind" value="query"> Google ニュースのキーワード</label>
+        </fieldset>
+        <div class="field" data-kind="url">
+          <label for="src-url">URL</label>
+          <input id="src-url" name="url" type="url" required pattern="https://.+" placeholder="https://example.com/news/" data-error="src-url-error">
+          <p class="hint">RSS かどうかは気にしなくて大丈夫です。追加すると自動で判定します。</p>
+          <p class="error-text" id="src-url-error">エラー：https:// で始まる URL を入力してください。</p>
+        </div>
+        <div class="field" data-kind="query" hidden>
+          <label for="src-query">キーワード</label>
+          <input id="src-query" name="query" type="text" maxlength="100" placeholder="例: 生成AI 規制" data-error="src-query-error">
+          <p class="error-text" id="src-query-error">エラー：キーワードを入力してください。</p>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="src-name">表示名（任意）</label>
+            <input id="src-name" name="displayName" type="text" maxlength="100">
+          </div>
+          <div class="field">
+            <label for="src-tags">タグ（任意・カンマ区切り）</label>
+            <input id="src-tags" name="tags" type="text" placeholder="競合, 規制">
+          </div>
+          <div class="field">
+            <label for="src-interval">取得間隔</label>
+            <select id="src-interval" name="fetchIntervalMin">
+              <option value="30">30 分</option>
+              <option value="60" selected>1 時間</option>
+              <option value="180">3 時間</option>
+              <option value="360">6 時間</option>
+              <option value="1440">1 日</option>
+            </select>
+          </div>
+        </div>
+        <button type="submit" class="primary">追加する</button>
+      </form>
+
+      <ul class="cards" id="source-list"></ul>
+    </section>
+
+    <!-- 配信履歴 -->
+    <section id="view-deliveries" hidden aria-labelledby="deliveries-title">
+      <div class="section-head">
+        <h2 id="deliveries-title">配信履歴</h2>
+        <p class="muted">まとめ配信と「今すぐ共有」の記録（新しい順・最大 50 件）</p>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th scope="col">日時</th><th scope="col">種類</th><th scope="col">配信設定・トピック</th><th scope="col">配信先</th><th scope="col">記事数</th><th scope="col">結果</th></tr></thead>
+          <tbody id="delivery-list"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <!-- 今すぐ共有 -->
+  <dialog id="share-dialog" closedby="any" aria-labelledby="share-title">
+    <form method="dialog" id="share-form">
+      <h2 id="share-title">今すぐ共有</h2>
+      <p class="share-article" id="share-article"></p>
+      <div class="field">
+        <label for="share-channel">配信先</label>
+        <select id="share-channel" name="channel" required></select>
+      </div>
+      <div class="field">
+        <label for="share-comment">ひとこと（任意）</label>
+        <textarea id="share-comment" name="comment" maxlength="500" rows="3"></textarea>
+      </div>
+      <div class="dialog-actions">
+        <button value="cancel" formnovalidate autofocus>キャンセル</button>
+        <button value="share" class="primary">共有する</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- トピックの追加・編集 -->
+  <dialog id="topic-dialog" aria-labelledby="topic-dialog-title">
+    <form method="dialog" id="topic-form">
+      <h2 id="topic-dialog-title">トピック</h2>
+      <div class="field">
+        <label for="topic-name">名前</label>
+        <input id="topic-name" name="name" type="text" required maxlength="100" placeholder="例: 生成AI のモデル・サービス">
+      </div>
+      <div class="field">
+        <label for="topic-description">関心のある内容（Gemini が採点に使います）</label>
+        <textarea id="topic-description" name="description" rows="3" maxlength="1000" placeholder="例: 新モデル、新機能、料金、提供開始・終了など"></textarea>
+      </div>
+      <div class="field">
+        <label for="topic-keywords">キーワード（カンマ区切り。先頭 8 個で Google ニュースを検索します）</label>
+        <input id="topic-keywords" name="keywords" type="text" required placeholder="生成AI, LLM, Gemini">
+      </div>
+      <div class="field">
+        <label for="topic-exclude">除外キーワード（任意・カンマ区切り）</label>
+        <input id="topic-exclude" name="excludeKeywords" type="text" placeholder="求人">
+      </div>
+      <label class="check"><input type="checkbox" name="autoSearch" checked> キーワードで Google ニュースを自動で検索する</label>
+      <label class="check"><input type="checkbox" name="enabled" checked> 有効</label>
+      <div class="dialog-actions">
+        <button value="cancel" formnovalidate>キャンセル</button>
+        <button value="save" class="primary">保存する</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- 配信設定の追加・編集 -->
+  <dialog id="digest-dialog" aria-labelledby="digest-dialog-title">
+    <form method="dialog" id="digest-form">
+      <h2 id="digest-dialog-title">配信設定</h2>
+      <div class="field">
+        <label for="digest-name">名前（投稿の見出しになります）</label>
+        <input id="digest-name" name="name" type="text" required maxlength="100" placeholder="例: AI ニュース 朝のまとめ">
+      </div>
+      <fieldset class="field topics-pick">
+        <legend>どのトピックの記事を</legend>
+        <div id="digest-topics"></div>
+      </fieldset>
+      <div class="field-row">
+        <div class="field">
+          <label for="digest-max">何件</label>
+          <input id="digest-max" name="maxItems" type="number" min="1" max="30" required value="10">
+        </div>
+        <div class="field">
+          <label for="digest-min">スコアのしきい値（0〜100）</label>
+          <input id="digest-min" name="minScore" type="number" min="0" max="100" required value="60">
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label for="digest-days">いつ</label>
+          <select id="digest-days" name="days">
+            <option value="1-5">平日</option>
+            <option value="*">毎日</option>
+            <option value="1">毎週月曜</option>
+            <option value="custom">cron で指定</option>
+          </select>
+        </div>
+        <div class="field" data-schedule="simple">
+          <label for="digest-time">時刻</label>
+          <input id="digest-time" name="time" type="time" step="900" value="09:00" required>
+        </div>
+        <div class="field" data-schedule="custom" hidden>
+          <label for="digest-cron">cron（Asia/Tokyo）</label>
+          <input id="digest-cron" name="cron" type="text" placeholder="0 9 * * 1-5">
+        </div>
+      </div>
+      <div class="field">
+        <label for="digest-channel">どこへ</label>
+        <select id="digest-channel" name="channelId" required></select>
+      </div>
+      <label class="check"><input type="checkbox" name="enabled" checked> 有効</label>
+      <p class="error" id="digest-error" hidden></p>
+      <div class="dialog-actions">
+        <button value="cancel" formnovalidate>キャンセル</button>
+        <button value="save" class="primary">保存する</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- 情報源の候補（Gemini の提案） -->
+  <dialog id="suggest-dialog" closedby="any" aria-labelledby="suggest-title" class="wide">
+    <h2 id="suggest-title">情報源の候補</h2>
+    <p class="muted" id="suggest-status"></p>
+    <ul class="cards" id="suggest-list"></ul>
+    <form method="dialog" class="dialog-actions">
+      <button value="close" autofocus>閉じる</button>
+    </form>
+  </dialog>
+
+  <!-- 配信のプレビュー -->
+  <dialog id="preview-dialog" aria-labelledby="preview-title" class="wide">
+    <form method="dialog" id="preview-form">
+      <h2 id="preview-title">配信のプレビュー</h2>
+      <p class="muted" id="preview-status"></p>
+      <ul class="cards" id="preview-list"></ul>
+      <div class="dialog-actions">
+        <button value="cancel" autofocus>閉じる</button>
+        <button value="send" class="primary" id="preview-send">この内容で配信</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- 削除の確認 -->
+  <dialog id="confirm-dialog" aria-labelledby="confirm-title">
+    <form method="dialog">
+      <h2 id="confirm-title">確認</h2>
+      <p id="confirm-message"></p>
+      <div class="dialog-actions">
+        <button value="cancel" autofocus>やめる</button>
+        <button value="ok" class="danger" id="confirm-ok">削除する</button>
+      </div>
+    </form>
+  </dialog>
+</body>
+</html>

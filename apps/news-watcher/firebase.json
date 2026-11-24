@@ -1,0 +1,94 @@
+{
+  "$schema": "../../node_modules/firebase-tools/schema/firebase-config.json",
+  "hosting": {
+    "site": "fga-news-watcher",
+    "public": "web/dist",
+    "ignore": [
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "headers": [
+      {
+        "source": "**",
+        "headers": [
+          {
+            "key": "X-Content-Type-Options",
+            "value": "nosniff"
+          },
+          {
+            "key": "Referrer-Policy",
+            "value": "strict-origin-when-cross-origin"
+          },
+          {
+            "key": "X-Frame-Options",
+            "value": "DENY"
+          },
+          {
+            "key": "Permissions-Policy",
+            "value": "camera=(), microphone=(), geolocation=()"
+          }
+        ]
+      },
+      {
+        "source": "**/*.@(js|css|html)",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
+      }
+    ],
+    "predeploy": [
+      "pnpm --dir \"$PROJECT_DIR/web\" build"
+    ]
+  },
+  "firestore": [
+    {
+      "database": "news-watcher",
+      "location": "asia-northeast1",
+      "rules": "firestore.rules",
+      "indexes": "firestore.indexes.json"
+    }
+  ],
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "news-watcher",
+      "runtime": "nodejs24",
+      "ignore": [
+        "node_modules",
+        "src",
+        "test",
+        "lib/*.map",
+        "*.log",
+        "tsconfig.json",
+        "build.mjs",
+        "vitest.config.*",
+        ".secret.local"
+      ],
+      "predeploy": [
+        "pnpm --dir \"$RESOURCE_DIR\" build"
+      ]
+    }
+  ],
+  "emulators": {
+    "singleProjectMode": true,
+    "auth": {
+      "port": 9099
+    },
+    "firestore": {
+      "port": 8080
+    },
+    "functions": {
+      "port": 5001
+    },
+    "hosting": {
+      "port": 5000
+    },
+    "ui": {
+      "enabled": true,
+      "port": 4000
+    }
+  }
+}

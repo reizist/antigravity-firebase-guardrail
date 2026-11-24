@@ -1,0 +1,218 @@
+rules_version = '2';
+
+// ==============================================================================
+// news-watcher — Firestore Security Rules（DB: news-watcher）
+//   本番への反映は platform の Terraform だけが行う（docs/platform_design.md §3.3）。
+//   変更は PR で出し、エンジニア組織のレビュー（CODEOWNERS）を受ける。
+//   設計: docs/news_watcher_design.md §5
+// ==============================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---- 共通 -----------------------------------------------------------------
+
+    // 社内ドメインの、メール確認済みの Google アカウントだけ（全ルールの前提）
+    //   ドメインは platform/config.json の internal_domain と同じにする（CI のポリシーチェックで確認する）
+    function isInternal() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.email.lower().matches('.*@example[.]com$');
+    }
+
+    function myEmail() {
+      return request.auth.token.email.lower();
+    }
+
+    function memberPath() {
+      return /databases/$(database)/documents/members/$(myEmail());
+    }
+
+    // members/{email} に登録がなければ viewer（社内の人なら誰でも読める）
+    function role() {
+      return exists(memberPath()) ? get(memberPath()).data.role : 'viewer';
+    }
+
+    function isEditor() {
+      return isInternal() && role() in ['editor', 'admin'];
+    }
+
+    function isAdmin() {
+      return isInternal() && role() == 'admin';
+    }
+
+    function changedKeys() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+
+    function isStr(v, maxLen) {
+      return v is string && v.size() > 0 && v.size() <= maxLen;
+    }
+
+    // ---- 情報源（利用者が URL を貼って追加・停止・削除する） -------------------
+    //   判定結果（type / feedUrl / status=ok|error / lastError / sample ...）は関数だけが書く。
+    //   利用者が書けるのは下の項目だけで、status は 'pending'（再判定の依頼）にしか変えられない。
+    function sourceUserKeys() {
+      return ['url', 'displayName', 'query', 'extraction', 'tags', 'enabled',
+              'fetchIntervalMin', 'status', 'createdBy', 'updatedAt'];
+    }
+
+    function validSourceFields(d) {
+      return isStr(d.url, 2048) && d.url.matches('^https://.*')
+        && (!('displayName' in d) || isStr(d.displayName, 100))
+        && (!('enabled' in d) || d.enabled is bool)
+        && (!('tags' in d) || (d.tags is list && d.tags.size() <= 10))
+        && (!('fetchIntervalMin' in d) || (d.fetchIntervalMin is int && d.fetchIntervalMin >= 30 && d.fetchIntervalMin <= 1440));
+    }
+
+    match /sources/{sourceId} {
+      allow read: if isInternal();
+      allow create: if isEditor()
+        && request.resource.data.keys().hasOnly(sourceUserKeys())
+        && request.resource.data.status == 'pending'
+        && request.resource.data.createdBy == myEmail()
+        && validSourceFields(request.resource.data);
+      allow update: if isEditor()
+        && changedKeys().hasOnly(['url', 'displayName', 'query', 'extraction', 'tags', 'enabled',
+                                  'fetchIntervalMin', 'status', 'updatedAt'])
+        && (!('status' in changedKeys()) || request.resource.data.status == 'pending')
+        && validSourceFields(request.resource.data);
+      allow delete: if isEditor();
+    }
+
+    // ---- 監視トピック（キーワードから Google ニュースの情報源を関数が自動で作る。§5.2） -----------
+    function validTopic(d) {
+      return isStr(d.name, 100)
+        && d.keywords is list && d.keywords.size() <= 50
+        && (!('excludeKeywords' in d) || (d.excludeKeywords is list && d.excludeKeywords.size() <= 50))
+        && (!('description' in d) || (d.description is string && d.description.size() <= 1000))
+        && (!('autoSearch' in d) || d.autoSearch is bool)
+        && d.enabled is bool;
+    }
+
+    match /topics/{topicId} {
+      allow read: if isInternal();
+      allow create: if isEditor()
+        && request.resource.data.keys().hasOnly(['name', 'description', 'keywords', 'excludeKeywords', 'sourceIds',
+                                                 'autoSearch', 'enabled', 'createdBy', 'updatedAt'])
+        && validTopic(request.resource.data);
+      allow update: if isEditor()
+        && changedKeys().hasOnly(['name', 'description', 'keywords', 'excludeKeywords', 'sourceIds',
+                                  'autoSearch', 'enabled', 'updatedAt'])
+        && validTopic(request.resource.data);
+      allow delete: if isEditor();
+    }
+
+    // ---- 定期配信の設定（どのトピックの記事を・何件・いつ・どこへ。§5.3） -----------------
+    //   lastRunAt は関数だけが書く
+    function validDigest(d) {
+      return isStr(d.name, 100)
+        && d.topicIds is list && d.topicIds.size() >= 1 && d.topicIds.size() <= 10
+        && d.maxItems is int && d.maxItems >= 1 && d.maxItems <= 30
+        && d.minScore is int && d.minScore >= 0 && d.minScore <= 100
+        && isStr(d.cron, 100)
+        && isStr(d.channelId, 128)
+        && d.enabled is bool;
+    }
+
+    match /digests/{digestId} {
+      allow read: if isInternal();
+      allow create: if isEditor()
+        && request.resource.data.keys().hasOnly(['name', 'topicIds', 'maxItems', 'minScore', 'cron', 'channelId',
+                                                 'enabled', 'createdBy', 'updatedAt'])
+        && validDigest(request.resource.data);
+      allow update: if isEditor()
+        && changedKeys().hasOnly(['name', 'topicIds', 'maxItems', 'minScore', 'cron', 'channelId', 'enabled', 'updatedAt'])
+        && validDigest(request.resource.data);
+      allow delete: if isEditor();
+    }
+
+    // ---- 情報源の提案の依頼（作成だけ。関数 onSuggestRequest が Gemini で候補を書く。§5.4） -------------
+    match /sourceSuggestions/{requestId} {
+      allow read: if isInternal();
+      allow create: if isEditor()
+        && request.resource.data.keys().hasOnly(['topicId', 'requestedBy', 'status', 'createdAt'])
+        && request.resource.data.requestedBy == myEmail()
+        && request.resource.data.status == 'pending'
+        && isStr(request.resource.data.topicId, 128);
+      allow update, delete: if false;
+    }
+
+    // ---- 配信設定の「今すぐ配信」の依頼（作成だけ。関数 onDigestRun が投稿する。§5.3） -----------------
+    match /digestRuns/{runId} {
+      allow read: if isInternal();
+      allow create: if isEditor()
+        && request.resource.data.keys().hasOnly(['digestId', 'articleIds', 'requestedBy', 'status', 'createdAt'])
+        && request.resource.data.requestedBy == myEmail()
+        && request.resource.data.status == 'pending'
+        && isStr(request.resource.data.digestId, 128)
+        && request.resource.data.articleIds is list
+        && request.resource.data.articleIds.size() >= 1 && request.resource.data.articleIds.size() <= 30;
+      allow update, delete: if false;
+    }
+
+    // ---- 配信先チャンネル（Webhook URL は Secret Manager。ここにはシークレット名だけ） -----
+    match /channels/{channelId} {
+      allow read: if isInternal();
+      allow write: if isAdmin()
+        && (request.resource == null
+            || (request.resource.data.type in ['google_chat', 'slack']
+                && isStr(request.resource.data.secretName, 255)
+                && !('webhookUrl' in request.resource.data)));
+    }
+
+    // ---- 関数だけが書くもの ---------------------------------------------------
+    match /articles/{articleId} {
+      allow read: if isInternal();
+      allow write: if false;
+    }
+
+    match /deliveries/{deliveryId} {
+      allow read: if isInternal();
+      allow write: if false;
+    }
+
+    // ---- 「今すぐ共有」（作成だけ。処理は Firestore トリガーの関数） -----------
+    match /shareRequests/{requestId} {
+      allow read: if isInternal();
+      allow create: if isInternal()
+        && request.resource.data.keys().hasOnly(['articleId', 'channelId', 'comment', 'requestedBy', 'status', 'createdAt'])
+        && request.resource.data.requestedBy == myEmail()
+        && request.resource.data.status == 'pending'
+        && isStr(request.resource.data.articleId, 128)
+        && isStr(request.resource.data.channelId, 128)
+        && (!('comment' in request.resource.data) || request.resource.data.comment.size() <= 500);
+      allow update, delete: if false;
+    }
+
+    // ---- フィードバック（👍/👎。ドキュメント ID は <articleId>_<uid>、本人だけ） ----
+    match /feedback/{feedbackId} {
+      allow read: if isInternal();
+      allow create, update: if isInternal()
+        && request.resource.data.uid == request.auth.uid
+        && feedbackId == request.resource.data.articleId + '_' + request.auth.uid
+        && request.resource.data.vote in ['up', 'down'];
+      allow delete: if isInternal() && resource.data.uid == request.auth.uid;
+    }
+
+    // ---- メンバー（ドキュメント ID はメールアドレスの小文字。最初の admin は Terraform が登録） ----
+    match /members/{email} {
+      allow read: if isInternal() && (email == myEmail() || isAdmin());
+      allow write: if isAdmin()
+        && (request.resource == null
+            || (request.resource.data.role in ['viewer', 'editor', 'admin']
+                && request.resource.data.email == email));
+    }
+
+    // ---- アプリの設定（モデル名・1 回あたりの上限など） -----------------------
+    match /config/{docId} {
+      allow read: if isInternal();
+      allow write: if isAdmin();
+    }
+
+    // 上に書いたもの以外はすべて拒否（Firestore の既定と同じだが、明示しておく）
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

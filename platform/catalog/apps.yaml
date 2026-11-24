@@ -1,0 +1,32 @@
+# ==============================================================================
+# アプリ台帳（エンジニア組織が管理。変更は CODEOWNERS でレビュー必須）
+#
+# ここに 1 件追加する PR がマージされると、platform の Terraform が
+# 共有プロジェクト内に「テナント」を払い出す：
+#   Hosting サイト fga-<id> / Firestore DB <id> / Web アプリ登録と制限付き API キー /
+#   実行 SA app-<id>@ / シークレットの入れ物 <ID>_<NAME>（英大文字・アンダースコア。例: NEWS_WATCHER_SLACK_WEBHOOK_GENERAL） / Security Rules（apps/<id>/firestore.rules）
+#
+# キー（app id）: 英小文字・数字・ハイフン、20 文字以内
+# tier          : 0 = セルフサービス / 1 = 軽いレビュー（Tier 2 は専用 PJ に切り出すので、ここには載せない）
+# data_class    : public | internal | confidential（Tier 0 は internal まで）
+# owners        : アプリのオーナー（IAM メンバー形式）。Google グループ fga-<id>-owners@ を推奨（検証なら user:alice@example.com でもよい）
+# admins        : アプリ内の最初の admin（Firestore の members/{email} に role=admin で登録される）
+# expires       : 有効期限（YYYY-MM-DD）。期限を過ぎると CI のポリシーチェックが失敗する（延長するか、アプリを停止する）
+# budget_jpy    : （任意）ラベル app=<id> 単位の月額予算。enable_budgets = true のときだけ使う
+# secrets       : 必要なシークレットの名前（値はオーナーが登録する。Terraform は入れ物だけを作る）
+# ==============================================================================
+
+apps:
+  news-watcher:
+    display_name: News Watcher
+    description: 社内のニュースチャンネルに、業務に必要な情報を自動で集めて共有する
+    tier: 0
+    department: corp-planning
+    data_class: internal
+    owners:
+      - group:fga-news-watcher-owners@example.com
+    admins:
+      - owner@example.com
+    expires: "2027-03-31"
+    secrets:
+      - slack-webhook-general

@@ -1,0 +1,21 @@
+{
+  "name": "antigravity-firebase-guardrail",
+  "private": true,
+  "description": "Firebase の共有プロジェクトに社内アプリをテナントとして同居させるガードレール基盤（pnpm workspace）",
+  "packageManager": "pnpm@12.16.1",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "test": "pnpm -r --if-present test",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "build": "pnpm -r --if-present build",
+    "policy": "node platform/policies/check.mjs",
+    "policy:test": "node --test \"platform/policies/*.test.mjs\""
+  },
+  "devDependencies": {
+    "firebase-tools": "^15.34.1",
+    "yaml": "^2.9.1"
+  },
+  "license": "MIT"
+}

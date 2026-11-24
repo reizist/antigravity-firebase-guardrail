@@ -1,0 +1,32 @@
+# ==============================================================================
+# レビュー担当（docs/platform_design.md §5）
+#   エンジニア組織のレビューが必須のもの: 基盤（platform/）・Security Rules・CI・Skill・依存の設定
+#   それ以外の apps/<app>/** は、アプリのオーナーが自分たちでマージしてよい（Tier 0）
+#
+# テンプレートからコピーしたら、下の所有者を自分の組織のチームに書き換える
+#   例: @your-org/platform-engineers
+# あわせて main のブランチ保護で「Require review from Code Owners」を有効にする
+# ==============================================================================
+
+/platform/                  @reizist
+/apps/*/firestore.rules     @reizist
+/apps/*/storage.rules       @reizist
+/scripts/                   @reizist
+/.github/                   @reizist
+/.agents/                   @reizist
+/AGENT.md                   @reizist
+/AGENTS.md                  @reizist
+
+# 依存とサプライチェーン対策の設定（依存の追加・更新はエンジニア組織が確認する）
+/package.json               @reizist
+/pnpm-lock.yaml             @reizist
+/pnpm-workspace.yaml        @reizist
+/.npmrc                     @reizist
+/apps/*/*/package.json      @reizist
+
+# OSV-Scanner の例外（理由と期限つき。追加・延長はエンジニア組織が確認する）
+/osv-scanner.toml           @reizist
+
+# ライセンス・セキュリティポリシー
+/LICENSE                    @reizist
+/SECURITY.md                @reizist

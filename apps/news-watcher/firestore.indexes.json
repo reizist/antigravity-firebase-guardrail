@@ -1,0 +1,21 @@
+{
+  "indexes": [],
+  "fieldOverrides": [
+    {
+      "collectionGroup": "articles",
+      "fieldPath": "expireAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "articles",
+      "fieldPath": "summary",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "articles",
+      "fieldPath": "reasons",
+      "indexes": []
+    }
+  ]
+}

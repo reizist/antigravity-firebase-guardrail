@@ -1,0 +1,21 @@
+# .github/workflows の Action は、すべて commit SHA で固定し "# vN" のコメントを付けている。
+# 誰も更新しない固定は古びるので、Dependabot が週 1 回、SHA（とコメント）をまとめて 1 つの PR で更新する。
+#
+# npm の依存は、ここでは更新しない。pnpm-workspace.yaml の保護設定（minimumReleaseAge・allowBuilds など）と
+# 依存の許可リストを通す必要があるので、エンジニアが手元で pnpm update して PR を出す。
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Tokyo
+    groups:
+      github-actions:
+        patterns: ["*"]
+    labels: [ci]
+    commit-message:
+      prefix: "ci(deps)"
+    open-pull-requests-limit: 5

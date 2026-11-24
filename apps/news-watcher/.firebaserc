@@ -1,0 +1,6 @@
+{
+  "projects": {
+    "default": "demo-news-watcher",
+    "emulator": "demo-news-watcher"
+  }
+}
