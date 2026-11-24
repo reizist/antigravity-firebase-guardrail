@@ -25,3 +25,6 @@
 /pnpm-workspace.yaml        @reizist
 /.npmrc                     @reizist
 /apps/*/*/package.json      @reizist
+
+# OSV-Scanner の例外（理由と期限つき。追加・延長はエンジニア組織が確認する）
+/osv-scanner.toml           @reizist
