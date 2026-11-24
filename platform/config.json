@@ -1,0 +1,9 @@
+{
+  "project_id": "your-firebase-project-id",
+  "region": "asia-northeast1",
+  "internal_domain": "example.com",
+  "site_prefix": "fga",
+  "github_repository": "your-org/your-repo",
+  "deploy_ref": "refs/heads/main",
+  "deployer_impersonators": []
+}

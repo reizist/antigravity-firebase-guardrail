@@ -1,0 +1,16 @@
+{
+  "//": "apps/*/functions と apps/*/web の package.json に書いてよい依存（dependencies / devDependencies）。追加はエンジニア組織がレビューする（CODEOWNERS）",
+  "allowed": [
+    "@google/genai",
+    "@types/node",
+    "esbuild",
+    "fast-xml-parser",
+    "firebase",
+    "firebase-admin",
+    "firebase-functions",
+    "node-html-parser",
+    "typescript",
+    "vitest",
+    "yaml"
+  ]
+}

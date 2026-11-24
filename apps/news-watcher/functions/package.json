@@ -1,0 +1,31 @@
+{
+  "name": "@fga/news-watcher-functions",
+  "private": true,
+  "description": "news-watcher の Cloud Functions（codebase: news-watcher）。esbuild で lib/index.js に 1 ファイルにまとめてデプロイする",
+  "type": "module",
+  "main": "lib/index.js",
+  "engines": {
+    "node": "24"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "sync:watchlist": "node scripts/run-ts.mjs scripts/sync-watchlist.ts"
+  },
+  "//": "dependencies はクラウド側のビルドでインストールされるもの（バンドルしない 2 つだけ・版は固定）。それ以外は esbuild でバンドルするので devDependencies に置く（docs/platform_design.md §7.2）",
+  "dependencies": {
+    "firebase-admin": "14.5.0",
+    "firebase-functions": "7.4.0"
+  },
+  "devDependencies": {
+    "@google/genai": "^2.31.0",
+    "@types/node": "^26.6.5",
+    "esbuild": "^0.28.2",
+    "fast-xml-parser": "^5.11.2",
+    "node-html-parser": "^9.0.5",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5",
+    "yaml": "^2.9.1"
+  }
+}

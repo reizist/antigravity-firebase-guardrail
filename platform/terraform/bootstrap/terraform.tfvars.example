@@ -1,0 +1,9 @@
+# Copyright 2026 Google LLC
+# SPDX-License-Identifier: Apache-2.0
+# scripts/bootstrap_project.sh が platform/terraform/bootstrap/terraform.tfvars（Git 管理外）として書き出す内容の例。
+# プロジェクト ID・リージョン・GitHub リポジトリは platform/config.json で決める。
+project_name        = "Firebase Governance Apps"
+create_project      = true
+org_id              = "123456789012"
+billing_account     = "XXXXXX-XXXXXX-XXXXXX"
+terraform_operators = ["user:platform-engineer@example.com"]

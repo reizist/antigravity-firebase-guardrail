@@ -1,0 +1,13 @@
+# Copyright 2026 Google LLC
+# SPDX-License-Identifier: Apache-2.0
+# platform/terraform/terraform.tfvars（Git 管理外）に書く、任意の設定。
+# プロジェクト ID などの基本の値は platform/config.json で決めるので、このファイルはなくても動く。
+
+# Google ログイン用 OAuth クライアント（コンソールで作成。空なら Firebase コンソールで Google プロバイダを有効化する）
+# CI から apply するなら、同じ値をリポジトリのシークレット GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET にも登録する
+# google_oauth_client_id     = "xxxx.apps.googleusercontent.com"
+# google_oauth_client_secret = "xxxx"
+
+# 予算アラート（課金アカウント側の権限が必要）
+# enable_budgets  = true
+# billing_account = "XXXXXX-XXXXXX-XXXXXX"

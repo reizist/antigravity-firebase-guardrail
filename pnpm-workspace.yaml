@@ -1,0 +1,32 @@
+# Copyright 2026 Google LLC
+# SPDX-License-Identifier: Apache-2.0
+# ==============================================================================
+# pnpm workspace とサプライチェーン対策（docs/platform_design.md §7.2）
+#   設定を緩める（例外を足す）ときは、理由を書いてエンジニア組織の承認を得る
+# ==============================================================================
+
+packages:
+  - "apps/*/functions"
+  - "apps/*/web"
+  - "platform/functions"
+
+# 公開から 7 日（分単位）たった版だけを入れる（乗っ取られた版の多くは数日以内に見つかって取り下げられる）
+minimumReleaseAge: 10080
+# 緊急のセキュリティ修正だけを例外にするときに使う（エンジニア組織が判断する）
+minimumReleaseAgeExclude: []
+
+# 以前の版より信頼性（署名・provenance）が下がった版を拒否する
+trustPolicy: no-downgrade
+
+# 推移的な依存に git / tarball URL などレジストリ以外の取得元を許さない
+blockExoticSubdeps: true
+
+# インストール時のスクリプトは既定で実行しない。許可するものだけ true にし、許可外（未記載）があればインストールを失敗させる
+# false は「内容を確認したうえで実行しない（なくても動く）」もの
+strictDepBuilds: true
+allowBuilds:
+  esbuild: true # ネイティブバイナリの配置（ビルドに必要）
+  "@firebase/util": false # FIREBASE_WEBAPP_CONFIG 環境変数から既定の設定を書き出すだけ（App Hosting 用）
+  "@google/genai": false # prepare（レジストリから入れた依存では不要）
+  protobufjs: false # バージョン確認だけ
+  re2: false # firebase-tools の依存。ビルド済みバイナリを GitHub から取得する。なくても firebase-tools は動く（要確認）

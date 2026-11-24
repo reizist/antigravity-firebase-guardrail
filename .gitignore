@@ -1,0 +1,42 @@
+# Node.js / pnpm / Firebase
+node_modules/
+.pnpm-store/
+dist/
+**/functions/lib/
+.firebase/
+firebase-debug.log
+firebase-debug.*.log
+firestore-debug.log
+ui-debug.log
+pubsub-debug.log
+*.local
+.secret.local
+.runtimeconfig.json
+emulator-data/
+coverage/
+
+# Terraform（state・tfvars・plan は commit しない）
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+*.tfplan
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# 秘密情報・ローカル設定
+.env
+.env.*
+!.env.example
+.envrc.local
+.direnv/
+*-key.json
+*credentials*.json
+
+# OS
+.DS_Store

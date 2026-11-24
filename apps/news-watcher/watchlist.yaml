@@ -1,0 +1,64 @@
+# Copyright 2026 Google LLC
+# SPDX-License-Identifier: Apache-2.0
+# ==============================================================================
+# news-watcher の監視リスト（情報源・トピック・配信先）
+#
+# このファイルが正。Firestore（DB: news-watcher）へは sync スクリプトで反映する:
+#   cd apps/news-watcher/functions
+#   pnpm sync:watchlist                 # 差分を表示するだけ（既定）
+#   pnpm sync:watchlist --apply         # 反映する
+#   pnpm sync:watchlist --apply --prune # YAML から消したものを Firestore からも消す
+# 詳しくは docs/news_watcher_design.md §5.1
+#
+# - キー（gcp-blog など）が Firestore のドキュメント ID になる（英小文字・数字・ハイフン）
+# - 秘密情報は書かない（Webhook URL は Secret Manager。ここにはシークレット名だけ）
+# - メンバー（社員のメールアドレス）は書かない
+# ==============================================================================
+
+# 配信先。secretName は functions/src/config.ts の WEBHOOK_SECRET_NAMES（＝台帳の secrets）から選ぶ
+channels:
+  general:
+    type: slack
+    displayName: "Slack #general"
+    secretName: NEWS_WATCHER_SLACK_WEBHOOK_GENERAL
+
+# 共通の情報源（全トピックで採点する）。url（RSS / Atom / Web ページのどれでもよい）か query（Google ニュースの検索語）のどちらかを書く
+#   トピックごとの Google ニュース検索は、トピックの keywords から関数が自動で作る（autoSearch。docs/news_watcher_design.md §5.2）
+#   enabled: false で停止 / fetchIntervalMin: 取得間隔（分、30〜1440。既定 60）
+sources:
+  google-ai-blog:
+    displayName: Google AI Blog
+    url: https://blog.google/technology/ai/rss/
+    tags: [AI, Google]
+  deepmind-blog:
+    displayName: Google DeepMind Blog
+    url: https://deepmind.google/blog/rss.xml
+    tags: [AI, Google]
+  openai-news:
+    displayName: OpenAI News
+    url: https://openai.com/news/rss.xml
+    tags: [AI, OpenAI]
+  huggingface-blog:
+    displayName: Hugging Face Blog
+    url: https://huggingface.co/blog/feed.xml
+    tags: [AI, OSS]
+  itmedia-aiplus:
+    displayName: ITmedia AI+
+    url: https://rss.itmedia.co.jp/rss/2.0/aiplus.xml
+    tags: [AI, 国内]
+
+# トピック（topics）と定期配信の設定（digests）は、画面（トピック・配信設定）で追加・編集する。
+#   ここに書くこともできるが、書いたものは managedBy: yaml になり、画面では読み取り専用になる（docs/news_watcher_design.md §5.1〜5.3）
+#   例:
+#   topics:
+#     genai-models:
+#       name: 生成AI のモデル・サービス
+#       keywords: [生成AI, LLM, Gemini]
+#   digests:
+#     ai-morning:
+#       name: AI ニュース 朝のまとめ
+#       topicIds: [genai-models]
+#       maxItems: 10
+#       minScore: 60
+#       cron: "0 9 * * 1-5"
+#       channelId: general
