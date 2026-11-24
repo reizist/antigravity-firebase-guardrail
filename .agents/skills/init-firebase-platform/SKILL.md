@@ -41,7 +41,7 @@ description: Firebase のガバナンス付き共有プロジェクト（ガー�
 
 | キー | 聞くこと |
 |---|---|
-| `project_id` | 共有プロジェクトの ID（世界で一意。新しく作る） |
+| `project_id` | 共有プロジェクトの ID（世界で一意。新しく作る）。既にあるプロジェクトを使うなら、表示名ではなく ID を `gcloud projects list` で確かめる（表示名と違うことが多い） |
 | `region` | 既定 `asia-northeast1` |
 | `internal_domain` | 社内ドメイン（Google Workspace のドメイン。このドメインのアカウントだけがアプリを使える） |
 | `site_prefix` | Hosting サイトの接頭辞（既定 `fga`。サイト ID は世界で一意なので、組織名を含めた短い接頭辞を勧める） |
@@ -66,10 +66,11 @@ pnpm test && pnpm build
 ### 2. ブートストラップ（★ 承認が要る）
 
 ```bash
-./scripts/bootstrap_project.sh
+./scripts/bootstrap_project.sh --plan   # 差分だけ（変更しない）。これを依頼者に見せる
+./scripts/bootstrap_project.sh --yes    # 承認を得た後。確認の入力を求めずに apply する
 ```
 
-プロジェクトの作成・課金の紐付け・Terraform SA・tfstate バケット・WIF を作る。Terraform が plan を表示して確認を求めるので、**その plan を依頼者に見せ、承認を得てから `yes` を入力する**。組織・フォルダ・課金アカウント・Terraform SA を借用できるメンバーは、環境変数（`FGA_ORG_ID`・`FGA_FOLDER_ID`・`FGA_BILLING_ACCOUNT`・`FGA_OPERATORS`）で指定できる。
+プロジェクトの作成・課金の紐付け・Terraform SA・tfstate バケット・WIF を作る。**`--plan` の内容を依頼者に見せ、承認を得てから `--yes` で実行する**（対話の入力に答えられないエージェントは、引数なしで実行しない。引数なしだと Terraform が `yes` の入力を待って止まる）。組織・フォルダ・課金アカウント・Terraform SA を借用できるメンバーは、環境変数（`FGA_ORG_ID`・`FGA_FOLDER_ID`・`FGA_BILLING_ACCOUNT`・`FGA_OPERATORS`）で指定できる。
 
 - 最後に表示される `GCP_WIF_PROVIDER` の値を控える（手順 5 で使う）
 - Terraform SA の借用権限が効くまで 1〜2 分かかる
@@ -79,8 +80,10 @@ pnpm test && pnpm build
 
 ```bash
 ./scripts/deploy_platform.sh --plan    # 差分だけ（変更しない）。これを依頼者に見せる
-./scripts/deploy_platform.sh           # API の有効化 → サービスエージェントの作成 → plan → 確認 → apply
+./scripts/deploy_platform.sh --yes     # 承認を得た後。API の有効化 → サービスエージェントの作成 → plan → apply（確認の入力なし）
 ```
+
+`--yes` は、直前の `--plan` を依頼者が承認したときだけ使う。apply の結果の件数（追加・変更・削除）が、見せた plan と同じであることを確かめて報告する。
 
 よくある失敗：
 
@@ -110,7 +113,7 @@ Google ログイン用の OAuth クライアントは API から作れないの�
 
 ### 6. 最初のアプリ（news-watcher）で確かめる
 
-1. 配信先の Webhook URL を、払い出されたシークレットに登録する（値は依頼者が自分で入力する。チャットに貼らせない）
+1. 配信先の Webhook URL を、払い出されたシークレットに登録する（値は依頼者が自分で入力する。チャットに貼らせない）。**登録するまでデプロイできない**（関数が参照するシークレットに値がないと、`firebase deploy` が `has no latest version of the secret` で止まる）
 
    ```bash
    printf '%s' '<Webhook URL>' | gcloud secrets versions add NEWS_WATCHER_SLACK_WEBHOOK_GENERAL --data-file=- --project <project_id>
@@ -124,8 +127,14 @@ Google ログイン用の OAuth クライアントは API から作れないの�
    pnpm build && ./scripts/deploy_app.sh news-watcher
    ```
 
+   - なりすましのログインはブラウザでの認証が要るので、依頼者に実行してもらう
+   - 端末に `firebase login` が残っていても、スクリプトは使わない（`pnpm exec firebase deploy` を直接実行しない）
+   - 初回は、Firestore トリガーの関数だけ `Permission denied while using the Eventarc Service Agent` で失敗することがある。数分待って再実行する
+   - 最後に「ログイン処理のドメイン」の警告が出たら、表示のとおり `platform/config.json` に `auth_handler_domain` を足して、手順 3 をやり直す（プロジェクト ID に `firebase` などの予約語を含むときに起きる）
+
 3. `https://<site_prefix>-news-watcher.web.app` に社内アカウントでログインできること、Firebase コンソールで DB `news-watcher` の Rules が `apps/news-watcher/firestore.rules` と同じであることを確かめる
-4. 監視リスト（情報源・配信先）を反映する：[docs/news_watcher_design.md](../../../docs/news_watcher_design.md) §5.1
+4. 監視リスト（情報源・配信先）を反映する：[docs/news_watcher_design.md](../../../docs/news_watcher_design.md) §5.1。**反映するまで、画面の配信先（「どこへ」）は空のまま**（Webhook をシークレットに登録しただけでは選べない）。先に差分（`pnpm sync:watchlist --project <project_id>`）を見せてから `--apply` する
+5. 記事の取得は 60 分おき。すぐ確かめたいときは、承認を得て取得のジョブを 1 回実行し（`gcloud scheduler jobs run firebase-schedule-newsWatcher-fetchSources-<region> --location <region> --project <project_id>`）、関数のログで採点のエラー（Vertex AI の 403 など）が出ていないことを確かめる
 
 ### 7. 引き継ぐ
 

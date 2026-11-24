@@ -4,18 +4,22 @@ set -euo pipefail
 # ==============================================================================
 # アプリのデプロイ（デプロイ SA fga-deployer として実行）
 #   ./scripts/deploy_app.sh <app-id>
+#   FGA_FIREBASE_DEBUG=1 ./scripts/deploy_app.sh <app-id>   # firebase deploy に --debug を付ける（失敗の原因を調べるとき）
 #
 #   1. firebase deploy --only functions:<app>,firestore:indexes（web/dist があれば hosting:<prefix>-<app> も）
 #      Security Rules は含めない（反映は platform の Terraform だけ。デプロイ SA には権限もない）
 #   2. 自分の関数（Cloud Run サービス <appからハイフンを除いたもの>-*）に、実行 SA app-<app>@ の run.invoker を付ける
 #      PJ 単位の IAM Conditions（resource.name で絞る）は関数の呼び出しの判定に効かなかったため、サービス単位で付ける
 #      （docs/platform_design.md §9）。スケジュール関数は firebase-tools が付けるが、Firestore トリガーは付けない
+#   3. Hosting をデプロイしたら、Google ログインの処理が動くドメイン（/__/firebase/init.json の authDomain）が
+#      API キーのリファラ制限に入っているかを確かめる（入っていなければ直し方を表示する。docs/runbook.md §8）
 #
 # 認証:
 #   CI（.github/workflows/deploy.yml）: google-github-actions/auth が WIF で fga-deployer の認証情報を用意する
 #   ローカル（エンジニア組織だけ。platform/config.json の deployer_impersonators に入っている人）:
 #     CLOUDSDK_CONFIG=~/.config/gcloud-fga-deployer gcloud auth application-default login \
 #       --impersonate-service-account=fga-deployer@<project>.iam.gserviceaccount.com
+#     この端末に `firebase login` が残っていても使わない（下の XDG_CONFIG_HOME）
 # ==============================================================================
 
 APP_ID="${1:?使い方: ./scripts/deploy_app.sh <app-id>}"
@@ -45,15 +49,24 @@ if [[ -d "$APP_DIR/web/dist" && -n "$(ls -A "$APP_DIR/web/dist" 2>/dev/null)" ]]
   ONLY="${ONLY},hosting:${SITE_PREFIX}-${APP_ID}"
 fi
 
-echo "===> [1/2] firebase deploy --only ${ONLY}"
+echo "===> [1/3] firebase deploy --only ${ONLY}"
 (
   cd "$APP_DIR"
   export GOOGLE_APPLICATION_CREDENTIALS="$DEPLOYER_CREDENTIALS"
-  unset GOOGLE_OAUTH_ACCESS_TOKEN CLOUDSDK_CONFIG
-  pnpm exec firebase deploy --only "$ONLY" --project "$PROJECT_ID" --non-interactive
+  unset GOOGLE_OAUTH_ACCESS_TOKEN CLOUDSDK_CONFIG FIREBASE_TOKEN
+  if [[ -z "${GITHUB_ACTIONS:-}" ]]; then
+    # firebase-tools は、この端末に残っている `firebase login`（個人のアカウント）を ADC より優先して使う。
+    # そのアカウントに権限がないと「iam.serviceAccounts.ActAs がない」という紛らわしいエラーで止まり、
+    # 権限があると、デプロイ SA ではなく個人の権限でデプロイしてしまう。
+    # 設定の置き場所を空の一時ディレクトリに切り替えて、デプロイ SA だけが使われるようにする（個人のログインは消さない）
+    FIREBASE_CONFIG_HOME="$(mktemp -d)"
+    trap 'rm -rf "$FIREBASE_CONFIG_HOME"' EXIT
+    export XDG_CONFIG_HOME="$FIREBASE_CONFIG_HOME"
+  fi
+  pnpm exec firebase deploy --only "$ONLY" --project "$PROJECT_ID" --non-interactive ${FGA_FIREBASE_DEBUG:+--debug}
 )
 
-echo "===> [2/2] ${SERVICE_PREFIX}* に ${RUNTIME_SA} の run.invoker を付ける（デプロイ SA の権限で）"
+echo "===> [2/3] ${SERVICE_PREFIX}* に ${RUNTIME_SA} の run.invoker を付ける（デプロイ SA の権限で）"
 (
   cd "$ROOT_DIR"
   export GOOGLE_APPLICATION_CREDENTIALS="$DEPLOYER_CREDENTIALS"
@@ -80,4 +93,27 @@ echo "===> [2/2] ${SERVICE_PREFIX}* に ${RUNTIME_SA} の run.invoker を付け�
     }
   '
 )
+
+# Google ログインの処理は、PJ の既定の Hosting サイトのドメイン（init.json の authDomain）で動く。
+# プロジェクト ID に予約語（firebase など）を含むと <project_id>.firebaseapp.com とは別のドメインになり、
+# API キーのリファラ制限に入っていないと、ログインが「The requested action is invalid.」で失敗する
+if [[ "$ONLY" == *hosting:* ]]; then
+  echo "===> [3/3] ログイン処理のドメイン（authDomain）を確認"
+  EXPECTED_AUTH_DOMAIN="$(node -e '
+    const c = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
+    console.log(c.auth_handler_domain || `${c.project_id}.firebaseapp.com`);
+  ' "$CONFIG_FILE")"
+  ACTUAL_AUTH_DOMAIN="$(curl -fsS --retry 3 --max-time 20 "https://${SITE_PREFIX}-${APP_ID}.web.app/__/firebase/init.json" 2>/dev/null | node -e '
+    let s = ""; process.stdin.on("data", (d) => (s += d)).on("end", () => { try { console.log(JSON.parse(s).authDomain ?? ""); } catch { console.log(""); } });
+  ' || true)"
+  if [[ -z "$ACTUAL_AUTH_DOMAIN" ]]; then
+    echo "  ? init.json を読めませんでした（確認を省略）"
+  elif [[ "$ACTUAL_AUTH_DOMAIN" == "$EXPECTED_AUTH_DOMAIN" ]]; then
+    echo "  = ${ACTUAL_AUTH_DOMAIN}"
+  else
+    echo "  ⚠ ログイン処理のドメインは ${ACTUAL_AUTH_DOMAIN} ですが、API キーが許可しているのは ${EXPECTED_AUTH_DOMAIN} です。" >&2
+    echo "    このままだと Google ログインが「The requested action is invalid.」で失敗します。" >&2
+    echo "    platform/config.json に \"auth_handler_domain\": \"${ACTUAL_AUTH_DOMAIN}\" を足し、./scripts/deploy_platform.sh で反映してください（docs/runbook.md §8）" >&2
+  fi
+fi
 echo "✅ ${APP_ID} をデプロイしました"

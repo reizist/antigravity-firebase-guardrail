@@ -15,10 +15,10 @@ AI エージェントに任せる場合は、Skill [`init-firebase-platform`](..
 |---|---|
 | 1 | [`platform/config.json`](../platform/config.json) を自分の環境の値に書き換える（下記） |
 | 2 | `apps/news-watcher/firestore.rules` の `isInternal()` のドメインと、`platform/catalog/apps.yaml` の `owners` / `admins` を書き換え、`pnpm policy` が通ることを確かめる |
-| 3 ★ | `gcloud auth login` の後、`./scripts/bootstrap_project.sh` — PJ 作成・課金紐付け・Terraform SA・tfstate バケット・WIF。`platform/terraform/bootstrap/terraform.tfvars` が作られる（Git 管理外） |
+| 3 ★ | `gcloud auth login` の後、`./scripts/bootstrap_project.sh`（`--plan` で差分だけ、`--yes` で確認の入力なし） — PJ 作成・課金紐付け・Terraform SA・tfstate バケット・WIF。`platform/terraform/bootstrap/terraform.tfvars` が作られる（Git 管理外） |
 | 4 | Terraform SA の借用権限が効くまで 1〜2 分待つ |
 | 5 | `./scripts/deploy_platform.sh --plan` — 変更内容を確認する |
-| 6 ★ | `./scripts/deploy_platform.sh` — API の有効化 → サービスエージェントの作成 → plan → 確認 → apply |
+| 6 ★ | `./scripts/deploy_platform.sh`（`--yes` で確認の入力なし。plan を見て承認した後に使う） — API の有効化 → サービスエージェントの作成 → plan → 確認 → apply |
 | 7 | **Google ログインを有効にする**（下記） |
 | 8 | GitHub の設定（[§6](#6-github-actions-からデプロイする)） |
 
@@ -78,7 +78,9 @@ pnpm install --frozen-lockfile && pnpm build
 ./scripts/deploy_app.sh news-watcher
 ```
 
-- news-watcher の配信先：台帳の `secrets` で作られたシークレット（`NEWS_WATCHER_SLACK_WEBHOOK_GENERAL`）に、オーナーが Webhook URL を登録する
+- `deploy_app.sh` は、ローカルでは端末に残っている `firebase login` を使わない（デプロイ SA のなりすましだけを使う）。`pnpm exec firebase deploy` を直接実行しない
+- 失敗の原因を調べるときは `FGA_FIREBASE_DEBUG=1 ./scripts/deploy_app.sh <app>`（firebase-tools の `--debug`）
+- news-watcher の配信先：台帳の `secrets` で作られたシークレット（`NEWS_WATCHER_SLACK_WEBHOOK_GENERAL`）に、オーナーが Webhook URL を登録する。**関数が参照するシークレットに値（バージョン）が 1 つもないと、デプロイは `has no latest version of the secret` で止まる**ので、初回のデプロイの前に登録する
 
 ```bash
 printf '%s' 'https://hooks.slack.com/services/…' | gcloud secrets versions add NEWS_WATCHER_SLACK_WEBHOOK_GENERAL --data-file=- --project <project_id>
@@ -108,6 +110,11 @@ SA を借用できるのは、`deploy_ref`（既定 `main`）で動くワーク�
 - **サービスエージェントの作成が遅れる**：`deploy_platform.sh` が `generateServiceIdentity` を先に呼ぶ。それでも「Service agent does not exist」が出たら 1〜2 分待って再実行する
 - **Terraform SA の借用が効かない**：bootstrap の直後は 1〜2 分待つ
 - **Hosting のサイト ID が使われている**：サイト ID は世界で一意。`platform/config.json` の `site_prefix` を変える（Auth の許可ドメインと API キーのリファラも自動で追従する）
-- **Google ログインのポップアップが `The requested action is invalid.` になる**：ログイン処理は PJ の既定ドメインで動く。プロジェクト ID に `firebase` などの予約語を含むと既定サイトの ID が変わるので（例: `firebase-xxx` → `fir-xxx`）、`platform/config.json` に `auth_handler_domain` を足して `/__/firebase/init.json` の `authDomain` を指定する
+- **既存のプロジェクトを使うとき**：`platform/config.json` の `project_id` には、表示名ではなくプロジェクト ID を書く（`gcloud projects list` の `PROJECT_ID` 列。コンソールで作ると `<名前>-<数字>` になっていることが多い）
+- **ローカルのデプロイが `iam.serviceAccounts.ActAs` の不足で止まる（権限は付いているのに）**：firebase-tools は、端末に残っている `firebase login`（個人のアカウント）を ADC より優先して使う。`scripts/deploy_app.sh` は、ローカルでは設定の置き場所（`XDG_CONFIG_HOME`）を空の一時ディレクトリに切り替えて、デプロイ SA のなりすましだけが使われるようにしている（個人のログインは消さない）
+- **デプロイが `Cloud Secret Manager has no latest version of the secret ...` で止まる**：関数が `defineSecret` で参照するシークレットに、値が登録されていない。オーナーが値を登録してから再実行する（[§5](#5-アプリをデプロイする)）
+- **初回の関数デプロイで Firestore トリガーだけ失敗する**（`Permission denied while using the Eventarc Service Agent`）：Eventarc のサービスエージェントの権限が反映されるまで数分かかる。数分待って再実行する（成功した関数はそのまま残る）
+- **画面の配信先（「どこへ」）が空**：配信先は Secret Manager ではなく Firestore の `channels` から読む。監視リストを反映する（[news_watcher_design.md §5.1](./news_watcher_design.md)）
+- **Google ログインのポップアップが `The requested action is invalid.` になる**：ログイン処理は PJ の既定ドメインで動く。プロジェクト ID に `firebase` などの予約語を含むと既定サイトの ID が変わるので（例: `firebase-xxx` → `fir-xxx`）、`platform/config.json` に `auth_handler_domain` を足して `/__/firebase/init.json` の `authDomain` を指定し、`./scripts/deploy_platform.sh` で反映する（API キーの許可リファラが変わる。反映に数分かかる）。`scripts/deploy_app.sh` は、Hosting をデプロイした後にこの食い違いを確かめて、直し方を表示する
 - **予算アラート**：作成には課金アカウント側の権限が要るため、既定で無効（`enable_budgets = false`）
 - **最小権限の `firebase deploy` が止まる**：[platform_design.md §9](./platform_design.md#9-実機で分かったこと未確認事項) に、原因と Terraform 側の対処をまとめている

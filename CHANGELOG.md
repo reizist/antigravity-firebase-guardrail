@@ -3,6 +3,15 @@
 **Antigravity Firebase Guardrail** の主な変更。書式は [Keep a Changelog](https://keepachangelog.com/) におおよそ従う。
 テンプレートからコピーしたリポジトリには自動では届かないので、必要な変更をここから取り込む。
 
+## Unreleased
+
+初回構築を実際の環境で通したときに分かった点の改善。
+
+- **`scripts/deploy_app.sh`**：ローカルでは、端末に残っている `firebase login` を使わない（firebase-tools は ADC より個人のログインを優先するため、デプロイ SA のなりすましが効かず、`iam.serviceAccounts.ActAs` がないという紛らわしいエラーで止まっていた）。Hosting のデプロイ後に、ログイン処理のドメイン（`/__/firebase/init.json` の `authDomain`）と `auth_handler_domain` の食い違いを確かめて、直し方を表示する。`FGA_FIREBASE_DEBUG=1` で `--debug` を付けられる。
+- **`scripts/bootstrap_project.sh` / `scripts/deploy_platform.sh`**：`--yes`（確認の入力を求めない）と、bootstrap の `--plan`（差分だけ）を追加。対話の入力に答えられない AI エージェントでも、「plan を見せる → 承認 → apply」の順を守れる。サービスエージェントの作成は通信エラーで再試行し、失敗したら警告を出す。
+- **news-watcher**：配信先が 1 件もないとき、配信設定の「どこへ」に理由を表示する（監視リストの反映が必要）。
+- **`docs/runbook.md` §8 と Skill `init-firebase-platform`**：既存プロジェクトの ID の確かめ方、シークレットに値がないとデプロイできないこと、初回の Eventarc の反映待ち、配信先が空になる理由、取得ジョブの手動実行を追記。
+
 ## 0.1.0
 
 - **最初の公開。** Firebase の共有プロジェクトに社内アプリをテナントとして同居させるガードレール基盤：Terraform（bootstrap・Workload Identity Federation・最小権限のデプロイ SA・`modules/app-tenant`）、アプリ台帳、環境の値を 1 か所にまとめた `platform/config.json`。

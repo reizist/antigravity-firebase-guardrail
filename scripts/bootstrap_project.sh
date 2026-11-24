@@ -7,6 +7,12 @@ set -euo pipefail
 #   2. platform/terraform/bootstrap/terraform.tfvars を書く（Git 管理外）
 #   3. terraform apply（PJ・Terraform SA・tfstate バケット・GitHub Actions 用の WIF）
 #
+# 使い方:
+#   ./scripts/bootstrap_project.sh           # plan を表示して、terraform の確認（yes）の後に apply
+#   ./scripts/bootstrap_project.sh --plan    # plan だけ（クラウドを変更しない。terraform.tfvars は書く）
+#   ./scripts/bootstrap_project.sh --yes     # 確認の入力を求めずに apply（--plan の内容を見て承認した後に使う。
+#                                            # 入力に答えられない AI エージェント・自動実行用）
+#
 # 環境変数（任意）:
 #   FGA_ORG_ID            作成先の組織 ID（省略時は gcloud organizations list の先頭）
 #   FGA_FOLDER_ID         作成先のフォルダ ID（指定すると組織の直下ではなくフォルダに作る）
@@ -19,6 +25,16 @@ set -euo pipefail
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
 require_configured
+
+PLAN_ONLY="false"
+AUTO_APPROVE=()
+for arg in "$@"; do
+  case "$arg" in
+    --plan) PLAN_ONLY="true" ;;
+    --yes) AUTO_APPROVE=(-auto-approve) ;;
+    *) echo "ERROR: 不明な引数です: ${arg}（--plan / --yes）" >&2; exit 1 ;;
+  esac
+done
 
 PROJECT_NAME="${FGA_PROJECT_NAME:-Firebase Governance Apps}"
 
@@ -71,8 +87,12 @@ fi
 echo "===> [Bootstrap 3/3] terraform apply（PJ・Terraform SA・tfstate・WIF）..."
 use_gcloud_token_for_terraform
 terraform -chdir="$TF_DIR/bootstrap" init -input=false
-# plan を表示し、terraform 自身が確認を求める（yes と入力するまで何も作らない）
-terraform -chdir="$TF_DIR/bootstrap" apply
+if [[ "$PLAN_ONLY" == "true" ]]; then
+  terraform -chdir="$TF_DIR/bootstrap" plan -input=false
+  exit 0
+fi
+# plan を表示し、terraform 自身が確認を求める（yes と入力するまで何も作らない。--yes のときは求めない）
+terraform -chdir="$TF_DIR/bootstrap" apply ${AUTO_APPROVE[@]+"${AUTO_APPROVE[@]}"}
 
 WIF_PROVIDER="$(terraform -chdir="$TF_DIR/bootstrap" output -raw github_wif_provider)"
 

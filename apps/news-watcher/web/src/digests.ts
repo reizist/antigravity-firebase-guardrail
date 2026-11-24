@@ -74,6 +74,8 @@ export function initDigests(state: AppState): { refresh: () => void } {
     ($("digest-channel") as HTMLSelectElement).replaceChildren(
       ...[...state.channels.values()].map((c) => h("option", { attrs: { value: c.id }, text: c.displayName ?? c.id })),
     );
+    // 配信先は watchlist.yaml の sync で入る。0 件だと選択肢が空になるので、理由を出す（docs/news_watcher_design.md §5.1）
+    $("digest-channel-hint").hidden = state.channels.size > 0;
     const f = form.elements;
     (f.namedItem("name") as HTMLInputElement).value = d?.name ?? "";
     (f.namedItem("maxItems") as HTMLInputElement).value = String(d?.maxItems ?? 10);

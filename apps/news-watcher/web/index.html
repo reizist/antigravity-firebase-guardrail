@@ -239,6 +239,7 @@
       <div class="field">
         <label for="digest-channel">どこへ</label>
         <select id="digest-channel" name="channelId" required></select>
+        <p class="hint" id="digest-channel-hint" hidden>配信先がまだ登録されていません。管理者に、監視リスト（watchlist.yaml の channels）の反映を依頼してください。</p>
       </div>
       <label class="check"><input type="checkbox" name="enabled" checked> 有効</label>
       <p class="error" id="digest-error" hidden></p>

@@ -8,6 +8,8 @@ set -euo pipefail
 # 使い方:
 #   ./scripts/deploy_platform.sh            # plan を表示して、確認してから apply
 #   ./scripts/deploy_platform.sh --plan     # plan だけ
+#   ./scripts/deploy_platform.sh --yes      # 確認の入力を求めずに apply（--plan の内容を見て承認した後に使う。
+#                                           # 入力に答えられない AI エージェント・自動実行用）
 # 2 回目以降は GitHub Actions（.github/workflows/deploy.yml）が同じ内容を実行する。
 # ==============================================================================
 
@@ -16,7 +18,16 @@ source "$(dirname "$0")/lib.sh"
 require_configured
 
 PLAN_ONLY="false"
-[[ "${1:-}" == "--plan" ]] && PLAN_ONLY="true"
+ASSUME_YES="false"
+for arg in "$@"; do
+  case "$arg" in
+    --plan) PLAN_ONLY="true" ;;
+    --yes) ASSUME_YES="true" ;;
+    *) echo "ERROR: 不明な引数です: ${arg}（--plan / --yes）" >&2; exit 1 ;;
+  esac
+done
+AUTO_APPROVE=()
+[[ "$ASSUME_YES" == "true" ]] && AUTO_APPROVE=(-auto-approve)
 
 use_gcloud_token_for_terraform
 
@@ -25,14 +36,15 @@ terraform -chdir="$TF_DIR" init -input=false -backend-config="bucket=${TFSTATE_B
 
 if [[ "$PLAN_ONLY" == "false" ]]; then
   echo "===> [2/3] API を有効化し、サービスエージェントを作成..."
-  terraform -chdir="$TF_DIR" apply -target=google_project_service.apis
+  terraform -chdir="$TF_DIR" apply -input=false ${AUTO_APPROVE[@]+"${AUTO_APPROVE[@]}"} -target=google_project_service.apis
   TOKEN="$(gcloud auth print-access-token)"
   # gcloud beta services identity create はコンポーネント導入の確認で止まることがあるので REST で呼ぶ
   for svc in firebaserules.googleapis.com eventarc.googleapis.com pubsub.googleapis.com \
              cloudfunctions.googleapis.com run.googleapis.com cloudscheduler.googleapis.com \
              firestore.googleapis.com secretmanager.googleapis.com artifactregistry.googleapis.com; do
-    curl -sS -X POST -H "Authorization: Bearer ${TOKEN}" -H "Content-Type: application/json" -d '{}' \
-      "https://serviceusage.googleapis.com/v1beta1/projects/${PROJECT_ID}/services/${svc}:generateServiceIdentity" >/dev/null || true
+    curl -sS --retry 3 --retry-all-errors -X POST -H "Authorization: Bearer ${TOKEN}" -H "Content-Type: application/json" -d '{}' \
+      "https://serviceusage.googleapis.com/v1beta1/projects/${PROJECT_ID}/services/${svc}:generateServiceIdentity" >/dev/null \
+      || echo "  WARN: ${svc} のサービスエージェントを作成できませんでした（apply が Service agent does not exist で止まったら再実行する）" >&2
   done
 fi
 
@@ -42,7 +54,7 @@ if [[ "$PLAN_ONLY" == "true" ]]; then
   rm -f "$TF_DIR/platform.tfplan"
   exit 0
 fi
-if ! confirm "この plan を apply しますか？"; then
+if [[ "$ASSUME_YES" != "true" ]] && ! confirm "この plan を apply しますか？"; then
   rm -f "$TF_DIR/platform.tfplan"
   echo "中止しました"
   exit 1
