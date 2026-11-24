@@ -90,7 +90,7 @@ printf '%s' 'https://hooks.slack.com/services/…' | gcloud secrets versions add
 |---|---|
 | リポジトリの変数 `GCP_WIF_PROVIDER` | `bootstrap_project.sh` の最後に表示される値（`projects/<番号>/locations/global/workloadIdentityPools/github/providers/github-actions`）。**未設定の間は、デプロイのジョブは何もしない** |
 | Environment `platform` | Settings → Environments で作り、Required reviewers にエンジニア組織を入れる。Terraform の apply（Security Rules の反映を含む）は、plan を見た人が承認するまで実行されない |
-| ブランチ保護（`main`） | PR を必須にし、「Require review from Code Owners」と CI（`ci` ワークフロー）の成功を必須にする |
+| ブランチ保護（`main`） | PR を必須にし、「Require review from Code Owners」と CI（`CI` ワークフロー）の成功を必須にする |
 | `.github/CODEOWNERS` | 雛形の所有者を、自分の組織のチーム（例: `@your-org/platform-engineers`）に書き換える |
 | シークレット（任意） | Google ログインを Terraform で管理する場合の `GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET` |
 

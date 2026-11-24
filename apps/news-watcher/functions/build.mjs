@@ -1,5 +1,3 @@
-// Copyright 2026 Google LLC
-// SPDX-License-Identifier: Apache-2.0
 // 関数を 1 ファイル（lib/index.js）にまとめる。
 // firebase-functions / firebase-admin だけはバンドルせず、クラウド側のビルドでインストールする（package.json の dependencies）。
 // それ以外の依存（@google/genai / fast-xml-parser / node-html-parser）はバンドルに含めるので、

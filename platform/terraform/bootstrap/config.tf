@@ -1,5 +1,3 @@
-# Copyright 2026 Google LLC
-# SPDX-License-Identifier: Apache-2.0
 # プロジェクト ID・リージョン・GitHub リポジトリは platform/config.json で決める（../config.tf と同じファイル）
 locals {
   platform_config   = jsondecode(file("${path.module}/../../config.json"))

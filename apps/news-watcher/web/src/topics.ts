@@ -1,5 +1,3 @@
-// Copyright 2026 Google LLC
-// SPDX-License-Identifier: Apache-2.0
 // トピック：一覧（キーワード・自動検索の情報源の状態）、追加・編集・停止・削除
 import { addDoc, collection, deleteDoc, doc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { canEdit, type AppState, type Topic } from "./types";

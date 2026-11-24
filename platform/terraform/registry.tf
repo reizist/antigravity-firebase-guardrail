@@ -1,5 +1,3 @@
-# Copyright 2026 Google LLC
-# SPDX-License-Identifier: Apache-2.0
 # ==============================================================================
 # Artifact Registry の npm リモートリポジトリ（docs/platform_design.md §7.2）
 #   npmjs.com に直接取りに行かせず、取得先をこのリポジトリ 1 つにする。

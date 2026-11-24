@@ -1,5 +1,3 @@
-// Copyright 2026 Google LLC
-// SPDX-License-Identifier: Apache-2.0
 // TypeScript のスクリプトを esbuild でまとめて実行する（tsx などの依存を増やさないため）
 //   node scripts/run-ts.mjs scripts/sync-watchlist.ts [引数...]
 // まとめたファイルは node_modules/.cache/ に置く（Git 管理外・デプロイ対象外）

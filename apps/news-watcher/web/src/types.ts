@@ -1,5 +1,3 @@
-// Copyright 2026 Google LLC
-// SPDX-License-Identifier: Apache-2.0
 // 画面で扱うデータの形（関数側の functions/src/types.ts に合わせる）と、全画面で共有する状態
 import type { Firestore, Timestamp } from "firebase/firestore";
 

@@ -1,5 +1,3 @@
-// Copyright 2026 Google LLC
-// SPDX-License-Identifier: Apache-2.0
 // Firebase の初期化
 //   本番：Hosting の予約 URL /__/firebase/init.json から設定を読む（API キーなどをリポジトリに書かない）
 //   localhost：エミュレータ（プロジェクト demo-news-watcher）につなぐ

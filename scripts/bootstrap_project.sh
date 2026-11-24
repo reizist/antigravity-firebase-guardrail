@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# Copyright 2026 Google LLC
-# SPDX-License-Identifier: Apache-2.0
 set -euo pipefail
 
 # ==============================================================================

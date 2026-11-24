@@ -105,7 +105,7 @@ Google ログイン用の OAuth クライアントは API から作れないの�
 
 1. リポジトリの変数 `GCP_WIF_PROVIDER` に、手順 2 で控えた値を登録する（登録するまで、デプロイのワークフローは何もしない）
 2. Environment `platform` を作り、Required reviewers にエンジニア組織を入れる（Terraform の apply は、plan を見た人が承認するまで実行されない）
-3. `main` のブランチ保護：PR を必須にし、「Require review from Code Owners」と `ci` ワークフローの成功を必須にする
+3. `main` のブランチ保護：PR を必須にし、「Require review from Code Owners」と `CI` ワークフローの成功を必須にする
 4. ここまでの変更（`platform/config.json` など）を作業ブランチに commit し、PR を出す。`*.tfvars` と state が含まれていないことを確かめる
 
 ### 6. 最初のアプリ（news-watcher）で確かめる

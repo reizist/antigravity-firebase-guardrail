@@ -1,5 +1,3 @@
-# Copyright 2026 Google LLC
-# SPDX-License-Identifier: Apache-2.0
 # ==============================================================================
 # pnpm workspace とサプライチェーン対策（docs/platform_design.md §7.2）
 #   設定を緩める（例外を足す）ときは、理由を書いてエンジニア組織の承認を得る

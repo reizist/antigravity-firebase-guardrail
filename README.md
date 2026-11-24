@@ -1,17 +1,32 @@
-# antigravity-firebase-guardrail
+<div align="center">
 
-[Google Antigravity](https://antigravity.google) などの AI エージェントで社内アプリを量産するための、**Firebase のガードレール基盤**です。1 つの Firebase 共有プロジェクトに、複数のアプリを「テナント」として分離して同居させます。
+# 🛡️ Antigravity Firebase Guardrail
 
-長い規約書を配る代わりに、**ガードレール基盤（Terraform・スクリプト・CI）と、立場別の 2 つの [Agent Skill](https://antigravity.google/docs/skills) を同じリポジトリに入れて**あります。エンジニアもアプリを作る人も、このリポジトリを AI に読ませて、対話しながら進めます。
+**AI エージェントで社内アプリを量産するための、Firebase のガードレール基盤。**
 
-> [!IMPORTANT]
-> これは検証用のサンプルで、Google の公式にサポートされたプロダクトではありません。内容は作者個人の見解に基づきます。
-> 検証済みの範囲と、まだ実機で確かめていない範囲は「[検証の状況](#検証の状況)」を見てください。
+1 つの Firebase 共有プロジェクトに、複数のアプリを「テナント」として分離して同居させます。<br/>
+エンジニアは土台を 1 回作るだけ。アプリを作る人は、やりたいことを AI に伝えるだけ。
 
-## 考え方
+[![CI](https://github.com/reizist/antigravity-firebase-guardrail/actions/workflows/ci.yml/badge.svg)](https://github.com/reizist/antigravity-firebase-guardrail/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Google Antigravity](https://img.shields.io/badge/Google-Antigravity-4285F4?logo=googlegemini&logoColor=white)](https://antigravity.google)
+![Firebase](https://img.shields.io/badge/Firebase-Hosting%20%C2%B7%20Firestore%20%C2%B7%20Functions-DD2C00?logo=firebase&logoColor=white)
+![Terraform](https://img.shields.io/badge/Terraform-%E2%89%A5%201.5-844FBA?logo=terraform&logoColor=white)
 
-- **手順の再現と実装パターンの誘導は、Agent Skill に任せる**（AI への指示）
-- **越えてはならない境界は、仕組みで押さえる**（Terraform・IAM・ビルド設定・CI）。AI の出力がぶれても、権限と検査の側で止まる
+</div>
+
+---
+
+## 💡 Why
+
+非エンジニアが AI で社内アプリを作れるようになった一方で、セキュリティやプライバシーの確認はエンジニアのレビューに頼ったままです。作る人は待たされ、エンジニアは五月雨式のレビューに追われます。
+
+| | Agent Skill（AI への指示） | 仕組み（Terraform・IAM・ビルド設定・CI） |
+|---|---|---|
+| **担うこと** | 手順の再現 · 実装パターンの誘導 | 越えてはならない境界 |
+| **ぶれたとき** | AI の出力は、ぶれることがある | 権限と検査の側で止まる |
+
+長い規約書を配る代わりに、**ガードレール基盤と、立場別の 2 つの [Agent Skill](https://antigravity.google/docs/skills) を同じリポジトリに入れて**あります。エンジニアもアプリを作る人も、このリポジトリを AI に読ませて、対話しながら進めます。
 
 ```mermaid
 flowchart LR
@@ -35,32 +50,7 @@ flowchart LR
     S2 -->|"CI の検査 ＋ Rules のレビュー"| ENV
 ```
 
-## 構成
-
-```text
-.
-├── AGENT.md                                 # リポジトリ全体の規約（AI が参照する基本方針）
-├── .agents/
-│   └── skills/
-│       ├── init-firebase-platform/          # 【エンジニア向け】初回のガードレール構築 Skill
-│       │   └── SKILL.md
-│       └── build-firebase-app/              # 【アプリを作る人向け】アプリ量産 Skill
-│           ├── SKILL.md
-│           └── reference.md                 #   名前の付け方・Rules と関数の雛形
-├── platform/
-│   ├── config.json                          # 環境の値（プロジェクト ID・社内ドメインなど）はここ 1 か所
-│   ├── catalog/apps.yaml                    # アプリ台帳（1 件追加するとテナントが払い出される）
-│   ├── terraform/                           # 共有プロジェクト・WIF・デプロイ SA・テナント（modules/app-tenant）
-│   └── policies/                            # CI のポリシーチェック・依存の許可リスト
-├── apps/
-│   └── news-watcher/                        # 第 1 号アプリ（RSS を Gemini で採点・要約して Slack に配信）
-├── scripts/                                 # bootstrap / deploy / destroy
-├── .github/                                 # ci.yml・deploy.yml・CODEOWNERS
-├── docs/                                    # 設計・手順
-└── pnpm-workspace.yaml                      # サプライチェーン対策（公開から 7 日待つ・スクリプトは許可制）
-```
-
-## ガードレール
+## ✨ What it does
 
 | ガードレール | 何を防ぐか | どこで |
 |---|---|---|
@@ -74,7 +64,7 @@ flowchart LR
 
 設計の詳細は [docs/platform_design.md](./docs/platform_design.md)、最小権限の `firebase deploy` でつまずいた点と対処は同 §9 にあります。
 
-## 使い方
+## 🚀 Getting started
 
 ### エンジニア（最初に 1 回）
 
@@ -101,17 +91,37 @@ Google Cloud コンソールも Terraform も触りません。手元の PC に�
 
 必要なもの：GitHub アカウント、Antigravity、Node.js 24・`pnpm`、Java 21 以上（エミュレータ用）。
 
-### 手元での確認
+## 🧩 What's inside
 
-```bash
-corepack enable pnpm
-pnpm install --frozen-lockfile
-pnpm policy                     # ポリシーチェック
-pnpm typecheck && pnpm test     # news-watcher の単体テスト
-pnpm build
+```text
+.
+├── AGENT.md                                 # リポジトリ全体の規約（AI が参照する基本方針）
+├── .agents/
+│   └── skills/
+│       ├── init-firebase-platform/          # 【エンジニア向け】初回のガードレール構築 Skill
+│       │   └── SKILL.md
+│       └── build-firebase-app/              # 【アプリを作る人向け】アプリ量産 Skill
+│           ├── SKILL.md
+│           └── reference.md                 #   名前の付け方・Rules と関数の雛形
+├── platform/
+│   ├── config.json                          # 環境の値（プロジェクト ID・社内ドメインなど）はここ 1 か所
+│   ├── catalog/apps.yaml                    # アプリ台帳（1 件追加するとテナントが払い出される）
+│   ├── terraform/                           # 共有プロジェクト・WIF・デプロイ SA・テナント（modules/app-tenant）
+│   └── policies/                            # CI のポリシーチェック・依存の許可リスト
+├── apps/
+│   └── news-watcher/                        # 第 1 号アプリ（RSS を Gemini で採点・要約して Slack に配信）
+├── scripts/                                 # bootstrap / deploy / destroy
+├── .github/                                 # CI・デプロイ・CODEOWNERS・Issue テンプレート
+├── docs/                                    # 設計・手順
+└── pnpm-workspace.yaml                      # サプライチェーン対策（公開から 7 日待つ・スクリプトは許可制）
 ```
 
-## 検証の状況
+| Skill | 相手 | やること |
+|---|---|---|
+| [`init-firebase-platform`](./.agents/skills/init-firebase-platform/SKILL.md) | エンジニア | 共有プロジェクト・WIF・最小権限 SA・テナントを、差分を確認しながら構築する |
+| [`build-firebase-app`](./.agents/skills/build-firebase-app/SKILL.md) | アプリを作る人 | 台帳に登録し、規約どおりに実装し、エミュレータで確かめ、PR を出す |
+
+## 📊 Verification status
 
 | 領域 | 状態 | 内容 |
 |---|---|---|
@@ -123,6 +133,31 @@ pnpm build
 
 ※ 作者の検証環境で、一般化する前の構成（プロジェクト ID などを直接書いた状態）で確認したものです。
 
-## ライセンス
+<details>
+<summary><b>🛠️ Development</b></summary>
 
-[Apache License 2.0](./LICENSE)
+```bash
+corepack enable pnpm
+pnpm install --frozen-lockfile
+pnpm policy                     # ポリシーチェック
+pnpm policy:test                # ポリシーチェックのテスト
+pnpm typecheck && pnpm test     # news-watcher の単体テスト
+pnpm build
+terraform fmt -check -recursive platform/terraform
+```
+
+クラウドには一切つながりません（Google Cloud の認証情報は不要）。
+
+</details>
+
+---
+
+## 🤝 Contributing
+
+MIT の個人プロジェクトです。Issue・PR・⭐ いずれも歓迎します。[CONTRIBUTING.md](CONTRIBUTING.md) を見てください。脆弱性の報告は [SECURITY.md](SECURITY.md) へ。
+
+---
+
+## ⚠️ Disclaimer
+
+コミュニティプロジェクトです。**Google とは無関係で、Google による承認・サポートを受けたものではありません。** 内容は作者個人の見解に基づきます。"Antigravity"・"Gemini"・"Firebase"・"Google Cloud" は、それぞれの権利者の商標です。このリポジトリを使って作成した Google Cloud のリソースの費用・認証情報・データの扱いは、利用者自身の責任で管理してください。検証の範囲は「Verification status」のとおりで、本番で使う前に自分の環境で確かめてください。MIT ライセンス — [LICENSE](LICENSE)。

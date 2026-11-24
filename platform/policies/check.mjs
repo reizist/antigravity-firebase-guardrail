@@ -1,5 +1,3 @@
-// Copyright 2026 Google LLC
-// SPDX-License-Identifier: Apache-2.0
 // ==============================================================================
 // CI のポリシーチェック（docs/platform_design.md §5）
 //   node platform/policies/check.mjs        # リポジトリ全体を確認（pnpm policy）

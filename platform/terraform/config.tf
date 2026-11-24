@@ -1,5 +1,3 @@
-# Copyright 2026 Google LLC
-# SPDX-License-Identifier: Apache-2.0
 # ==============================================================================
 # 環境ごとの値は platform/config.json の 1 か所で決める
 #   Terraform・scripts/・CI・アプリのビルド（functions/src/config.ts など）が同じファイルを読む。

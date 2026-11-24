@@ -1,5 +1,3 @@
-// Copyright 2026 Google LLC
-// SPDX-License-Identifier: Apache-2.0
 // ==============================================================================
 // sync の計画（YAML のあるべき姿と、Firestore の今の状態を比べる）
 //   - 書き込むのは YAML が持ち主の項目だけ（OWNED_FIELDS）。関数が書く項目は残す

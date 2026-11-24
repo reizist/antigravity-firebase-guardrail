@@ -1,5 +1,3 @@
-// Copyright 2026 Google LLC
-// SPDX-License-Identifier: Apache-2.0
 // ==============================================================================
 // news-watcher の関数（codebase: news-watcher）
 //   - すべてアプリ名のグループ newsWatcher で export する → 関数名は newsWatcher-<名前>

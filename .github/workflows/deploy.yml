@@ -1,5 +1,3 @@
-# Copyright 2026 Google LLC
-# SPDX-License-Identifier: Apache-2.0
 # ==============================================================================
 # main にマージされた変更を、共有プロジェクトに反映する
 #   platform : platform/** か apps/*/firestore.rules が変わったら、Terraform SA で plan → 承認 → apply

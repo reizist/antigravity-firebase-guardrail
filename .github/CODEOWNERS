@@ -1,5 +1,3 @@
-# Copyright 2026 Google LLC
-# SPDX-License-Identifier: Apache-2.0
 # ==============================================================================
 # レビュー担当（docs/platform_design.md §5）
 #   エンジニア組織のレビューが必須のもの: 基盤（platform/）・Security Rules・CI・Skill・依存の設定
@@ -28,3 +26,7 @@
 
 # OSV-Scanner の例外（理由と期限つき。追加・延長はエンジニア組織が確認する）
 /osv-scanner.toml           @reizist
+
+# ライセンス・セキュリティポリシー
+/LICENSE                    @reizist
+/SECURITY.md                @reizist

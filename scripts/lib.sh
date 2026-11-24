@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# Copyright 2026 Google LLC
-# SPDX-License-Identifier: Apache-2.0
 # ==============================================================================
 # scripts/*.sh の共通処理（source して使う）
 #   - platform/config.json から環境の値を読む（PROJECT_ID / REGION / SITE_PREFIX ...）

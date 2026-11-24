@@ -1,5 +1,3 @@
-# Copyright 2026 Google LLC
-# SPDX-License-Identifier: Apache-2.0
 # プロジェクト ID・リージョン・社内ドメイン・サイトの接頭辞・GitHub リポジトリは platform/config.json で決める（config.tf）
 
 variable "terraform_sa_id" {

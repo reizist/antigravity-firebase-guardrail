@@ -1,5 +1,3 @@
-// Copyright 2026 Google LLC
-// SPDX-License-Identifier: Apache-2.0
 // 画面のビルド：src/main.ts を esbuild で 1 ファイルにまとめ、index.html・style.css と一緒に dist/ に置く
 //   node build.mjs          # 本番用（ミニファイ）
 //   node build.mjs --watch  # ローカル開発用（エミュレータの Hosting が dist/ を配信する）

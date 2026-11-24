@@ -1,5 +1,3 @@
-# Copyright 2026 Google LLC
-# SPDX-License-Identifier: Apache-2.0
 # ==============================================================================
 # 共有プロジェクトの設定（エンジニア組織が管理）
 #   config.tf    : platform/config.json の読み込み（プロジェクト ID・社内ドメインなど）

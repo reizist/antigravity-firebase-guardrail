@@ -1,5 +1,3 @@
-// Copyright 2026 Google LLC
-// SPDX-License-Identifier: Apache-2.0
 // 配信履歴：まとめ配信と「今すぐ共有」の記録
 import { collection, limit, onSnapshot, orderBy, query } from "firebase/firestore";
 import type { AppState, Delivery } from "./types";

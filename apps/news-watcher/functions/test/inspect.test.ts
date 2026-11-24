@@ -1,5 +1,3 @@
-// Copyright 2026 Google LLC
-// SPDX-License-Identifier: Apache-2.0
 import { describe, expect, it } from "vitest";
 import type { SafeFetchResult } from "../src/lib/safeFetch.js";
 import { collectItems, googleNewsFeedUrl, inspectSource, isSourceDue } from "../src/sources/inspect.js";

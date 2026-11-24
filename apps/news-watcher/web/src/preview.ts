@@ -1,5 +1,3 @@
-// Copyright 2026 Google LLC
-// SPDX-License-Identifier: Apache-2.0
 // 配信のプレビューと「この内容で配信」（docs/news_watcher_design.md §5.3）
 //   プレビューは画面で計算する（関数の selectDigestItems と同じ条件）。配信は digestRuns に依頼を書き、関数 onDigestRun が投稿する
 import { addDoc, collection, FieldPath, getDocs, limit, onSnapshot, orderBy, query, serverTimestamp, where } from "firebase/firestore";

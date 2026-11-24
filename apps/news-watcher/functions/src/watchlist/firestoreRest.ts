@@ -1,5 +1,3 @@
-// Copyright 2026 Google LLC
-// SPDX-License-Identifier: Apache-2.0
 // ==============================================================================
 // Firestore REST API の最小クライアント（sync スクリプト用。依存を増やさないため自前で書く）
 //   - エミュレータ: FIRESTORE_EMULATOR_HOST があれば http://<host>/v1/...（Bearer owner で Rules を通さず書ける）

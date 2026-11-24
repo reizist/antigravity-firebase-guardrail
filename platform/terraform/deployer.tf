@@ -1,5 +1,3 @@
-# Copyright 2026 Google LLC
-# SPDX-License-Identifier: Apache-2.0
 # ==============================================================================
 # アプリのデプロイ SA（fga-deployer）— GitHub Actions のアプリ用ワークフローだけが借用する
 #   付けるもの  : Hosting・インデックス・Functions・スケジューラのデプロイに必要な権限

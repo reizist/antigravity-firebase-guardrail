@@ -1,12 +1,10 @@
-# Copyright 2026 Google LLC
-# SPDX-License-Identifier: Apache-2.0
 # ==============================================================================
 # PR と main で実行する検査（Google Cloud の認証情報は使わない）
 #   policy    : ポリシーチェック（台帳・firebase.json の担当範囲・HTTP 関数の禁止・Rules・依存・秘密情報）と単体テスト
 #   terraform : fmt と validate
 #   osv       : OSV-Scanner でロックファイルを確認（既知の脆弱性・悪性パッケージ）
 # ==============================================================================
-name: ci
+name: CI
 
 on:
   pull_request:

@@ -1,5 +1,3 @@
-// Copyright 2026 Google LLC
-// SPDX-License-Identifier: Apache-2.0
 // 配信設定：どのトピックの記事を・何件・いつ・どこへ（docs/news_watcher_design.md §5.3）
 import { addDoc, collection, deleteDoc, doc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { canEdit, type AppState, type Digest } from "./types";

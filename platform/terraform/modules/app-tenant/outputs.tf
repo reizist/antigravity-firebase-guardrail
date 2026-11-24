@@ -1,5 +1,3 @@
-# Copyright 2026 Google LLC
-# SPDX-License-Identifier: Apache-2.0
 output "site_id" {
   description = "Hosting サイト ID"
   value       = google_firebase_hosting_site.app.site_id

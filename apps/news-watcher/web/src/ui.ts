@@ -1,5 +1,3 @@
-// Copyright 2026 Google LLC
-// SPDX-License-Identifier: Apache-2.0
 // 画面の共通部品（DOM の組み立て・お知らせ・確認ダイアログ・日付の表示）
 //   データは必ず textContent で入れる（innerHTML は使わない）
 

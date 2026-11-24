@@ -1,5 +1,3 @@
-// Copyright 2026 Google LLC
-// SPDX-License-Identifier: Apache-2.0
 // トピックに合う情報源を Gemini に提案させる（docs/news_watcher_design.md §5.4）
 //   sourceSuggestions に依頼を書く → 関数 onSuggestRequest が候補を書く → 画面で選んで「追加」
 import { addDoc, collection, onSnapshot, serverTimestamp } from "firebase/firestore";

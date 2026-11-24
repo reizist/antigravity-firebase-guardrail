@@ -1,5 +1,3 @@
-// Copyright 2026 Google LLC
-// SPDX-License-Identifier: Apache-2.0
 // ポリシーチェックのテスト（node --test platform/policies/）
 //   実物の apps/news-watcher と台帳を一時ディレクトリに写し、1 か所だけ規約違反に書き換えて確かめる
 import assert from "node:assert/strict";
@@ -12,6 +10,10 @@ import { checkRepo, splitTopLevel, stripComments } from "./check.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const TODAY = "2026-12-01";
+// テンプレートからコピーして platform/config.json を書き換えたリポジトリでも通るよう、値は設定から読む
+const CONFIG = JSON.parse(readFileSync(join(ROOT, "platform/config.json"), "utf8"));
+const SITE = `${CONFIG.site_prefix}-news-watcher`;
+const DOMAIN_PATTERN = CONFIG.internal_domain.replaceAll(".", "[.]");
 
 function fixture(mutate = () => {}) {
   const dir = mkdtempSync(join(tmpdir(), "fga-policy-"));
@@ -55,9 +57,9 @@ test("台帳にないアプリのディレクトリは通さない", () => {
 
 test("firebase.json は自分のサイト・DB・codebase だけを参照する", () => {
   const result = fixture(({ edit }) =>
-    edit("apps/news-watcher/firebase.json", (s) => s.replace('"site": "fga-news-watcher"', '"site": "fga-other-app"').replace('"database": "news-watcher"', '"database": "(default)"').replace('"codebase": "news-watcher"', '"codebase": "default"')),
+    edit("apps/news-watcher/firebase.json", (s) => s.replace(`"site": "${SITE}"`, `"site": "${CONFIG.site_prefix}-other-app"`).replace('"database": "news-watcher"', '"database": "(default)"').replace('"codebase": "news-watcher"', '"codebase": "default"')),
   );
-  hasError(result, /hosting\.site は自分のサイト fga-news-watcher/);
+  hasError(result, new RegExp(`hosting\\.site は自分のサイト ${SITE}`));
   hasError(result, /firestore\.database は自分の DB news-watcher/);
   hasError(result, /functions\.codebase は news-watcher/);
 });
@@ -67,7 +69,7 @@ test("Security Rules の全開放・isInternal() を通らない allow は通さ
   hasError(fixture(({ edit }) => edit(rules, (s) => s.replace("allow read, write: if false;", "allow read, write: if true;"))), /全開放は書けません/);
   hasError(fixture(({ edit }) => edit(rules, (s) => s.replace("match /articles/{articleId} {\n      allow read: if isInternal();", "match /articles/{articleId} {\n      allow read: if request.auth != null;"))), /allow read の条件は isInternal\(\)/);
   hasError(fixture(({ edit }) => edit(rules, (s) => s.replace("allow delete: if isEditor();", "allow delete: if isEditor() || request.auth != null;"))), /allow delete の条件は isInternal\(\)/);
-  hasError(fixture(({ edit }) => edit(rules, (s) => s.replace("example[.]com", "gmail[.]com"))), /社内ドメインが platform\/config\.json の internal_domain/);
+  hasError(fixture(({ edit }) => edit(rules, (s) => s.replace(DOMAIN_PATTERN, "attacker[.]example"))), /社内ドメインが platform\/config\.json の internal_domain/);
 });
 
 test("関数の dependencies はバンドルしない 2 つだけ・許可リストにない依存は通さない", () => {

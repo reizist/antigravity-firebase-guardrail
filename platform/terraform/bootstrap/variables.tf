@@ -1,5 +1,3 @@
-# Copyright 2026 Google LLC
-# SPDX-License-Identifier: Apache-2.0
 # プロジェクト ID・リージョン・GitHub リポジトリは platform/config.json で決める（config.tf）
 
 variable "project_name" {

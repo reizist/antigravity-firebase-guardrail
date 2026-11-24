@@ -1,0 +1,44 @@
+# GitHub Actions のセキュリティ検査。deploy.yml は OIDC（Workload Identity Federation）で
+# Google Cloud のサービスアカウントを借用するので、ワークフローのファイルそのものを検査する：
+# テンプレートへの埋め込み（injection）・危険なトリガー・固定されていない Action・残った認証情報など。
+# 結果は Security タブ（code scanning）に出る。検出があってもジョブは失敗させない
+# （まず内容を見て判断するため）。fork からの PR は SARIF を上げられないので、ログへの出力だけ。
+name: zizmor
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/**']
+  pull_request:
+    paths: ['.github/**']
+  schedule:
+    - cron: '17 6 * * 1' # 週 1 回：検査の項目は上流でよく増える
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  zizmor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      security-events: write # SARIF のアップロード
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: zizmor（code scanning にアップロード）
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        uses: zizmorcore/zizmor-action@45d7276c9ca790aabd705e31ca99c6185c3e76dd # v0.8.1
+        with:
+          inputs: .github/workflows
+
+      - name: zizmor（fork からの PR — ログへの出力だけ）
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
+        uses: zizmorcore/zizmor-action@45d7276c9ca790aabd705e31ca99c6185c3e76dd # v0.8.1
+        with:
+          inputs: .github/workflows
+          advanced-security: false

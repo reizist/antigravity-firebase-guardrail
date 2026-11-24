@@ -1,5 +1,3 @@
-// Copyright 2026 Google LLC
-// SPDX-License-Identifier: Apache-2.0
 // 情報源：一覧（状態・最終取得・エラー・サンプル）、追加（URL を貼るだけ／Google ニュースのキーワード）、停止・再開・再判定・削除
 import { addDoc, collection, deleteDoc, doc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { canEdit, type AppState, type Source } from "./types";

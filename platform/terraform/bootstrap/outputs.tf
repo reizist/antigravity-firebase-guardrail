@@ -1,5 +1,3 @@
-# Copyright 2026 Google LLC
-# SPDX-License-Identifier: Apache-2.0
 output "project_id" {
   description = "共有 GCP プロジェクト ID"
   value       = local.effective_project_id

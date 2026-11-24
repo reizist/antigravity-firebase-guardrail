@@ -1,5 +1,3 @@
-// Copyright 2026 Google LLC
-// SPDX-License-Identifier: Apache-2.0
 // news-watcher の画面のエントリーポイント：ログイン・役割の確認・共通データの購読・画面の切り替え
 import { GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut, type User } from "firebase/auth";
 import { collection, doc, getDoc, onSnapshot, query, where, type Firestore } from "firebase/firestore";

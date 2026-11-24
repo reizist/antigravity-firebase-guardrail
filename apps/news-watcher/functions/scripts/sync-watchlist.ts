@@ -1,5 +1,3 @@
-// Copyright 2026 Google LLC
-// SPDX-License-Identifier: Apache-2.0
 // ==============================================================================
 // watchlist.yaml → Firestore（DB: news-watcher）の sync
 //

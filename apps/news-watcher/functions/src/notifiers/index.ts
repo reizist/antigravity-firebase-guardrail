@@ -1,5 +1,3 @@
-// Copyright 2026 Google LLC
-// SPDX-License-Identifier: Apache-2.0
 // ==============================================================================
 // 配信先（Google Chat / Slack）
 //   どちらも Incoming Webhook に JSON を POST するだけ。違うのはメッセージの組み立てだけ

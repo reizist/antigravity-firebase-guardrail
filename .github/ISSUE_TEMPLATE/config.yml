@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 📖 runbook（構築・運用の手順とハマりどころ）
+    url: https://github.com/reizist/antigravity-firebase-guardrail/blob/main/docs/runbook.md
+    about: サービスエージェントの作成待ち・Hosting のサイト ID の衝突・Google ログインの失敗など。まずここを見てください。
+  - name: 🔒 脆弱性の報告
+    url: https://github.com/reizist/antigravity-firebase-guardrail/security/advisories/new
+    about: テナントの分離やデプロイ SA の権限を越えられる方法は、公開の Issue ではなくこちらへ（SECURITY.md）。

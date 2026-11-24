@@ -1,5 +1,3 @@
-// Copyright 2026 Google LLC
-// SPDX-License-Identifier: Apache-2.0
 import { describe, expect, it } from "vitest";
 import { fromFields, toFields } from "../src/watchlist/firestoreRest.js";
 import { formatPlan, planSync, type CurrentState } from "../src/watchlist/plan.js";

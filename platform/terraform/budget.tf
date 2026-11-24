@@ -1,5 +1,3 @@
-# Copyright 2026 Google LLC
-# SPDX-License-Identifier: Apache-2.0
 # ==============================================================================
 # 予算アラート（任意。enable_budgets = true のときだけ作る）
 #   - 共有プロジェクト全体の予算

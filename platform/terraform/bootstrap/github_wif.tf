@@ -1,5 +1,3 @@
-# Copyright 2026 Google LLC
-# SPDX-License-Identifier: Apache-2.0
 # ==============================================================================
 # GitHub Actions → Google Cloud の鍵なし認証（Workload Identity Federation）
 #   - リポジトリ local.github_repository の Actions のトークンだけを受け付ける
