@@ -6,6 +6,7 @@
 #   deployer.tf  : アプリのデプロイ SA（fga-deployer）と Functions のビルド SA
 #   registry.tf  : Artifact Registry の npm リモートリポジトリ（パッケージの取得先を 1 つにする）
 #   budget.tf    : 予算アラート（Pub/Sub・メールに通知）
+#   quotas.tf    : API クォータ上限（Cloud Quotas API によるコード管理）
 #   audit_alerts.tf : Firestore のデータベース作成の監査アラート
 #   modules/app-tenant : 1 アプリ分のテナント（サイト・DB・TTL・API キー・実行 SA・シークレット・Security Rules）
 # すべて destroy できる（Firestore は deletion_policy = "DELETE"）。
@@ -40,6 +41,7 @@ locals {
     "cloudbilling.googleapis.com",     # firebase-tools が関数のデプロイ前に課金（Blaze）の有効を確認する
     "cloudbuild.googleapis.com",       # Functions のビルド
     "cloudfunctions.googleapis.com",   # Cloud Functions for Firebase（第 2 世代）
+    "cloudquotas.googleapis.com",      # API クォータ上限のコード管理（quotas.tf）
     "cloudscheduler.googleapis.com",   # スケジュール関数
     "eventarc.googleapis.com",         # Firestore トリガー
     "firebase.googleapis.com",         # Firebase Management

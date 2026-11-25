@@ -65,3 +65,24 @@ variable "max_apps_per_project" {
   type        = number
   default     = 30
 }
+
+# ------------------------------------------------------------------------------
+# API クォータ上限（quotas.tf。既定では空＝0 件スキップ。terraform.tfvars で指定する）
+# ------------------------------------------------------------------------------
+variable "quota_contact_email" {
+  description = "Cloud Quotas API のクォータ変更申請に添える連絡先メールアドレス（任意）"
+  type        = string
+  default     = ""
+}
+
+variable "api_quota_caps" {
+  description = "Cloud Quotas API で共有プロジェクト全体の API 消費上限を引き下げる設定（キーは任意の識別子）"
+  type = map(object({
+    service         = string
+    quota_id        = string
+    preferred_value = number
+    dimensions      = optional(map(string), {})
+    justification   = optional(string, "Firebase guardrail cost cap")
+  }))
+  default = {}
+}
