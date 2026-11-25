@@ -39,29 +39,29 @@ variable "google_oauth_client_secret" {
 }
 
 # ------------------------------------------------------------------------------
-# 予算アラート（任意）
-#   予算の作成には課金アカウント側の権限（billing.budgets.create）が必要なので、既定では作らない。
+# 予算アラート・監査アラート
+#   作るかどうか・金額・通知先は platform/config.json で決める（config.tf）。ここは補助の値だけ。
 # ------------------------------------------------------------------------------
-variable "enable_budgets" {
-  description = "予算アラートを作るか（課金アカウント側の権限が必要）"
-  type        = bool
-  default     = false
-}
-
 variable "billing_account" {
-  description = "予算アラートを作る課金アカウント ID（enable_budgets = true のとき）"
+  description = "予算アラートを作る課金アカウント ID（空なら、プロジェクトに紐付いている課金アカウントを使う）"
   type        = string
   default     = ""
-}
-
-variable "project_budget_jpy" {
-  description = "共有プロジェクト全体の月額予算（円）"
-  type        = number
-  default     = 30000
 }
 
 variable "budget_currency" {
   description = "予算の通貨（課金アカウントの通貨に合わせる）"
   type        = string
   default     = "JPY"
+}
+
+variable "self_service_dir" {
+  description = "セルフサービスの台帳のディレクトリ（1 アプリ 1 ファイル。このディレクトリからの相対パス）"
+  type        = string
+  default     = "../catalog/self-service"
+}
+
+variable "max_apps_per_project" {
+  description = "共有プロジェクト 1 つに置けるアプリ数の上限（Hosting 36 サイト・Firestore 100 DB の上限の手前で止める）"
+  type        = number
+  default     = 30
 }

@@ -34,7 +34,12 @@ variable "internal_domain" {
 }
 
 variable "rules_file" {
-  description = "Firestore の Security Rules ファイル（apps/<id>/firestore.rules）。なければ全拒否の Rules を反映する"
+  description = "アプリ独自の Security Rules ファイル（apps/<id>/firestore.rules）。rules_template が custom のときに使う（なければ全拒否の Rules を反映する）"
+  type        = string
+}
+
+variable "rules_templates_dir" {
+  description = "標準の Security Rules テンプレートのディレクトリ（platform/rules-templates）"
   type        = string
 }
 

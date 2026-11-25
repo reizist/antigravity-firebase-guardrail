@@ -23,6 +23,16 @@ output "google_sign_in_configured" {
   value       = length(google_identity_platform_default_supported_idp_config.google) > 0
 }
 
+output "budget_alerts_pubsub_topic" {
+  description = "予算アラートの通知先の Pub/Sub トピック（チャットへの通知や、関数を止める処理の購読先）"
+  value       = one(google_pubsub_topic.budget_alerts[*].id)
+}
+
+output "governance_alerts_pubsub_topic" {
+  description = "データベース作成の監査アラートの通知先の Pub/Sub トピック"
+  value       = one(google_pubsub_topic.governance_alerts[*].id)
+}
+
 output "tenants" {
   description = "テナントごとの情報（apps/<id>/ の firebase.json・関数・画面の設定に使う）"
   value = {
@@ -34,6 +44,7 @@ output "tenants" {
       functions_export_group  = t.functions_export_group
       runtime_service_account = t.runtime_service_account
       secrets                 = t.secrets
+      rules_mode              = t.rules_mode
       web_config              = t.web_config
     }
   }

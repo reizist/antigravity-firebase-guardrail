@@ -1,0 +1,75 @@
+rules_version = '2';
+
+// ==============================================================================
+// 標準 Firestore Security Rules テンプレート: internal-team-collab
+//   用途: 社内チームで共同編集する Tier 0 アプリ（個人情報・社外秘を含まないこと）
+//   反映: platform の Terraform が、この内容をそのまま反映する（社内ドメインは platform/config.json の internal_domain にそろえる）
+//   ※ このテンプレートをそのまま使う Tier 0 アプリはエンジニア承認なしで DB 払い出し可能
+// ==============================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isInternal() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.email.lower().matches('.*@example[.]com$');
+    }
+
+    function myEmail() {
+      return request.auth.token.email.lower();
+    }
+
+    function memberPath() {
+      return /databases/$(database)/documents/members/$(myEmail());
+    }
+
+    function isAdmin() {
+      return isInternal()
+        && exists(memberPath())
+        && get(memberPath()).data.role == 'admin';
+    }
+
+    // チーム共有データ（社内認証済みユーザーのみ読み書き可・ドキュメント肥大化を抑制）
+    match /items/{itemId} {
+      allow read: if isInternal();
+      allow create: if isInternal()
+        && request.resource.data.keys().size() <= 30
+        && request.resource.data.createdBy == myEmail();
+      allow update: if isInternal()
+        && request.resource.data.keys().size() <= 30
+        && request.resource.data.createdBy == resource.data.createdBy;
+      allow delete: if isInternal();
+    }
+
+    // バックエンド処理依頼キュー（HTTP 関数ゼロ構成の標準パターン：作成のみ許可）
+    match /requests/{requestId} {
+      allow read: if isInternal();
+      allow create: if isInternal()
+        && request.resource.data.keys().size() <= 15
+        && request.resource.data.requestedBy == myEmail()
+        && request.resource.data.status == 'pending';
+      allow update, delete: if false;
+    }
+
+    // メンバー管理（最初の admin は Terraform が登録）
+    match /members/{email} {
+      allow read: if isInternal() && (email == myEmail() || isAdmin());
+      allow write: if isAdmin()
+        && (request.resource == null
+            || (request.resource.data.role in ['viewer', 'editor', 'admin']
+                && request.resource.data.email == email));
+    }
+
+    // アプリ設定（閲覧は社内全員、変更は admin のみ）
+    match /config/{docId} {
+      allow read: if isInternal();
+      allow write: if isAdmin();
+    }
+
+    // 上記以外のコレクションはすべて拒否
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

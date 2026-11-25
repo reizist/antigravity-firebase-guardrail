@@ -1,6 +1,6 @@
 ---
 name: init-firebase-platform
-description: Firebase のガバナンス付き共有プロジェクト（ガードレール基盤）を初回構築する。Terraform・WIF・最小権限 SA・テナント払い出しを、差分を確認しながら進める
+description: Firebase のガバナンス付き共有プロジェクト（ガードレール基盤）を初回構築する。Terraform・WIF・最小権限 SA・予算アラート・データベース作成の監査アラート・テナント払い出しを、差分を確認しながら進める
 ---
 
 # init-firebase-platform — ガードレール基盤の初回構築（エンジニア向け）
@@ -11,6 +11,7 @@ description: Firebase のガバナンス付き共有プロジェクト（ガー�
 - GitHub Actions からの鍵なし認証（Workload Identity Federation）
 - 最小権限のデプロイ SA（`fga-deployer`。Security Rules の反映・DB の作成・IAM の変更・シークレットの読み取りはできない）
 - Artifact Registry の npm リモートリポジトリ、Functions のイメージ置き場（削除ポリシーつき）
+- 予算アラート（プロジェクト全体とアプリ別。Pub/Sub とメールに通知）と、Firestore のデータベース作成の監査アラート
 - 台帳 `platform/catalog/apps.yaml` に載っているアプリのテナント（Hosting サイト・Firestore DB・制限付き API キー・実行 SA・シークレットの入れ物・Security Rules・最初の admin）
 
 手順の詳細は [docs/runbook.md](../../../docs/runbook.md)、設計の理由は [docs/platform_design.md](../../../docs/platform_design.md) にある。迷ったら先に読む。
@@ -20,6 +21,7 @@ description: Firebase のガバナンス付き共有プロジェクト（ガー�
 - **クラウドのリソースを変更するコマンドは、内容を見せて承認を得てから実行する**。対象：`scripts/bootstrap_project.sh`、`scripts/deploy_platform.sh`（`--plan` を除く）、`scripts/deploy_app.sh`、`scripts/destroy_platform.sh`、`terraform apply` / `destroy`、`gcloud` でのリソース・IAM の変更、`gh` でのリポジトリ設定の変更。先に plan（差分）を見せる
 - **`destroy` と、`google_project` の削除を含む plan は、明示的に頼まれない限り実行しない**。plan に削除（`-` や `destroy`）が出たら、止まって理由を説明する
 - **秘密情報を commit しない・画面に出さない**：`*.tfvars`・`*.tfstate`・OAuth クライアントシークレット・Webhook URL・サービスアカウントの鍵。サービスアカウントの鍵は発行しない（認証は WIF とサービスアカウントの借用で行う）
+- **予算アラートと監査アラートは、既定のまま作る**。外すのは、課金アカウントの権限をもらえないなどの理由を依頼者が理解し、はっきり同意したときだけ（`platform/config.json` の `enable_budgets` / `enable_db_audit_alerts` を `false` にする）
 - **最小権限を崩さない**：デプロイ SA に `firebaserules.*` の反映権限・`roles/editor`・`roles/owner`・プロジェクト IAM の変更権限を足さない。権限エラーが出たら、まず [docs/platform_design.md §9](../../../docs/platform_design.md) の既知の対処に当たる。ロールを足すのは、原因を説明して承認を得てから
 - **サプライチェーン対策の設定を緩めない**：`pnpm-workspace.yaml` の `minimumReleaseAge`・`trustPolicy`・`blockExoticSubdeps`・`strictDepBuilds`・`allowBuilds`
 - パッケージ管理は pnpm だけ（`npm` / `npx` / `yarn` を使わない）
@@ -47,10 +49,15 @@ description: Firebase のガバナンス付き共有プロジェクト（ガー�
 | `site_prefix` | Hosting サイトの接頭辞（既定 `fga`。サイト ID は世界で一意なので、組織名を含めた短い接頭辞を勧める） |
 | `github_repository` | `owner/repo`（`git remote -v` から分かる） |
 | `deployer_impersonators` | CI を設定する前に、ローカルから最初のデプロイを行うエンジニア（例: `["user:alice@example.com"]`） |
+| `project_budget_jpy` | 共有プロジェクト全体の月額予算（円。既定 30000）。50%・90%・100% で通知する |
+| `budget_alert_emails` | 予算アラートを受け取るメールアドレス（例: `["platform-team@example.com"]`。空でも、課金アカウントの管理者と Pub/Sub には通知される） |
+| `security_alert_emails` | データベース作成の監査アラートを受け取るメールアドレス（情シス・基盤チーム。**空だと Pub/Sub にしか届かないので、必ず 1 つは入れてもらう**） |
+
+予算アラートは **通知だけで、課金は止まらない** ことを依頼者に伝える。共有プロジェクトの課金アカウントを外すと、同居する全アプリが止まる。上限そのものは、関数の `maxInstances` と API のクォータ（Vertex AI・Firestore）で決めるので、クォータを確かめるよう勧める。止める仕組みを足すなら、Pub/Sub トピック `fga-budget-alerts` を購読して、該当アプリの関数だけを止める形にする。
 
 あわせて、次を同じ値にそろえる。
 
-- `apps/news-watcher/firestore.rules` の `isInternal()` のドメイン（`.` は `[.]` と書く）
+- `apps/news-watcher/firestore.rules` と、標準テンプレート `platform/rules-templates/*.rules`（2 つ）の `isInternal()` のドメイン（`.` は `[.]` と書く）
 - `apps/news-watcher/firebase.json` の `hosting.site`（`<site_prefix>-news-watcher`）
 - `platform/catalog/apps.yaml` の `owners`・`admins`（実在するグループ・ユーザー。存在しないメンバーは Terraform が IAM の付与で失敗する）
 - `.github/CODEOWNERS` の所有者（依頼者の組織のチーム）
@@ -73,6 +80,7 @@ pnpm test && pnpm build
 プロジェクトの作成・課金の紐付け・Terraform SA・tfstate バケット・WIF を作る。**`--plan` の内容を依頼者に見せ、承認を得てから `--yes` で実行する**（対話の入力に答えられないエージェントは、引数なしで実行しない。引数なしだと Terraform が `yes` の入力を待って止まる）。組織・フォルダ・課金アカウント・Terraform SA を借用できるメンバーは、環境変数（`FGA_ORG_ID`・`FGA_FOLDER_ID`・`FGA_BILLING_ACCOUNT`・`FGA_OPERATORS`）で指定できる。
 
 - 最後に表示される `GCP_WIF_PROVIDER` の値を控える（手順 5 で使う）
+- 予算アラートを作るために、Terraform SA に課金アカウントの `roles/billing.costsManager` を付ける。実行する人に課金アカウントの IAM を変える権限がなく、ここで失敗したら、課金アカウントの管理者に頼む（頼めない環境だけ、依頼者の同意を得て `"enable_budgets": false`）
 - Terraform SA の借用権限が効くまで 1〜2 分かかる
 - 再実行で `google_project` の削除が plan に出たら、実行せずに止まる（`create_project` の設定を確かめる）
 
@@ -93,7 +101,9 @@ pnpm test && pnpm build
 | Terraform SA の借用で 403 | bootstrap の直後。1〜2 分待つ |
 | Hosting サイト ID が使われている | `site_prefix` を変え、手順 1 の「そろえる」をやり直す |
 | IAM の付与で `does not exist` | 台帳の `owners` が実在しない。実在するグループ・ユーザーにする |
-| 予算アラートの作成で権限エラー | 課金アカウント側の権限が要る。既定（`enable_budgets = false`）のままにする |
+| 予算アラートの作成で権限エラー（`billing.budgets.create`） | bootstrap が Terraform SA に課金アカウントの `roles/billing.costsManager` を付けられていない。課金アカウントの管理者に付けてもらう。もらえない環境だけ、依頼者の同意を得て `platform/config.json` に `"enable_budgets": false` を書く |
+| 課金アカウントが分からない、というエラー | プロジェクトに課金アカウントが紐付いていない。紐付けるか、`platform/terraform/terraform.tfvars` に `billing_account` を書く |
+| 監査アラートの Pub/Sub の権限付与で `does not exist` | Cloud Monitoring の通知用サービスエージェントがまだない。1〜2 分待って再実行する |
 
 ### 4. Google ログインを有効にする（手作業）
 
@@ -107,7 +117,7 @@ Google ログイン用の OAuth クライアントは API から作れないの�
 [docs/runbook.md](../../../docs/runbook.md) §6 のとおり。`gh` で行う場合も、実行前に内容を見せる。
 
 1. リポジトリの変数 `GCP_WIF_PROVIDER` に、手順 2 で控えた値を登録する（登録するまで、デプロイのワークフローは何もしない）
-2. Environment `platform` を作り、Required reviewers にエンジニア組織を入れる（Terraform の apply は、plan を見た人が承認するまで実行されない）
+2. Environment `platform` を作り、Required reviewers にエンジニア組織を入れる（Terraform の apply は、plan を見た人が承認するまで実行されない。セルフサービスのアプリのテナントの払い出しだけは、承認なしで進む）。private リポジトリでは、GitHub のプランによって Required reviewers を設定できない。設定できないなら、その旨を依頼者に伝える（PR のレビューだけが歯止めになる）
 3. `main` のブランチ保護：PR を必須にし、「Require review from Code Owners」と `CI` ワークフローの成功を必須にする
 4. ここまでの変更（`platform/config.json` など）を作業ブランチに commit し、PR を出す。`*.tfvars` と state が含まれていないことを確かめる
 
@@ -141,5 +151,5 @@ Google ログイン用の OAuth クライアントは API から作れないの�
 構築が終わったら、次を依頼者に伝える。
 
 - アプリを作る人には、このリポジトリを開いて「〇〇するアプリを作って」と頼んでもらえばよい（Skill `build-firebase-app` が規約に沿って進める）。Google Cloud の権限も Terraform も要らない
-- エンジニア組織がレビューするのは、台帳（`platform/catalog/apps.yaml`）と Security Rules（`apps/*/firestore.rules`）の差分
+- エンジニア組織がレビューするのは、台帳（`platform/catalog/apps.yaml`）と Security Rules（`apps/*/firestore.rules`）の差分。標準の型に収まるアプリ（`platform/catalog/self-service/`）は、レビューも承認もなしで反映される。データベースが作られるたびに、`security_alert_emails` に通知が届く
 - まだ行っていない確認があれば、そのまま伝える（例：2 つ目のテナントを作って、他のアプリの DB にアクセスできないことの確認。[docs/platform_design.md §9](../../../docs/platform_design.md)）

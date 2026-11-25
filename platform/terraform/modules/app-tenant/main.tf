@@ -7,23 +7,27 @@
 #     実行 SA          : app-<id>@                   （自分の DB・自分のシークレットだけ）
 #     関数名           : <idのcamelCase>-<関数名>    （Cloud Run のサービス名は <idからハイフンを除いたもの>-...）
 #     シークレット     : <ID>_<名前>（英大文字・アンダースコア。firebase-tools の制約）
-#     Security Rules   : apps/<id>/firestore.rules を Terraform だけが反映する（§3.3）
+#     Security Rules   : Terraform だけが反映する（§3.3）。台帳の rules_template が
+#                        標準テンプレートなら platform/rules-templates/<名前>.rules、custom なら apps/<id>/firestore.rules
+#     TTL              : 台帳の ttl_collections に書いたコレクションの expiresAt（期限を過ぎたドキュメントを自動で消す）
 # ==============================================================================
 
 locals {
-  id_parts       = split("-", var.app_id)
-  camel_id       = join("", concat([local.id_parts[0]], [for p in slice(local.id_parts, 1, length(local.id_parts)) : title(p)]))
-  service_prefix = "${replace(var.app_id, "-", "")}-" # 第 2 世代の Functions の Cloud Run サービス名（小文字化される）
-  site_id        = "${var.site_prefix}-${var.app_id}"
-  owners         = try(var.app.owners, [])
-  admins         = try(var.app.admins, [])
-  secret_names   = try(var.app.secrets, [])
-  database_name  = "projects/${var.project_id}/databases/${var.app_id}"
-  tier           = tostring(try(var.app.tier, 0))
-  department     = lower(replace(try(var.app.department, "unknown"), "/[^a-zA-Z0-9_-]/", "-"))
-  data_class     = try(var.app.data_class, "internal")
-  rules_exists   = fileexists(var.rules_file)
-  deny_all_rules = <<-EOT
+  id_parts        = split("-", var.app_id)
+  camel_id        = join("", concat([local.id_parts[0]], [for p in slice(local.id_parts, 1, length(local.id_parts)) : title(p)]))
+  service_prefix  = "${replace(var.app_id, "-", "")}-" # 第 2 世代の Functions の Cloud Run サービス名（小文字化される）
+  site_id         = "${var.site_prefix}-${var.app_id}"
+  owners          = try(var.app.owners, [])
+  admins          = try(var.app.admins, [])
+  secret_names    = coalesce(try(var.app.secrets, null), [])
+  database_name   = "projects/${var.project_id}/databases/${var.app_id}"
+  tier            = tostring(try(var.app.tier, 0))
+  department      = lower(replace(try(var.app.department, "unknown"), "/[^a-zA-Z0-9_-]/", "-"))
+  data_class      = try(var.app.data_class, "internal")
+  rules_template  = try(var.app.rules_template, "custom")
+  ttl_collections = coalesce(try(var.app.ttl_collections, null), [])
+  rules_exists    = fileexists(var.rules_file)
+  deny_all_rules  = <<-EOT
     rules_version = '2';
     // apps/${var.app_id}/firestore.rules がまだないため、すべて拒否する（platform の Terraform が反映）
     service cloud.firestore {
@@ -34,6 +38,12 @@ locals {
       }
     }
   EOT
+
+  rules_content = (
+    local.rules_template != "custom"
+    ? file("${var.rules_templates_dir}/${local.rules_template}.rules")
+    : (local.rules_exists ? file(var.rules_file) : local.deny_all_rules)
+  )
 
   app_labels = merge(var.labels, {
     app        = var.app_id
@@ -56,6 +66,17 @@ resource "google_firestore_database" "app" {
   point_in_time_recovery_enablement = "POINT_IN_TIME_RECOVERY_DISABLED"
   delete_protection_state           = "DELETE_PROTECTION_DISABLED"
   deletion_policy                   = "DELETE"
+}
+
+# 1b. TTL（台帳の ttl_collections に書いたコレクション。expiresAt を過ぎたドキュメントを Firestore が消す）
+resource "google_firestore_field" "ttl" {
+  for_each   = toset(local.ttl_collections)
+  project    = var.project_id
+  database   = google_firestore_database.app.name
+  collection = each.value
+  field      = "expiresAt"
+
+  ttl_config {}
 }
 
 # ------------------------------------------------------------------------------
@@ -227,7 +248,7 @@ resource "google_firebaserules_ruleset" "firestore" {
   source {
     files {
       name    = "firestore.rules"
-      content = local.rules_exists ? file(var.rules_file) : local.deny_all_rules
+      content = local.rules_content
     }
   }
 

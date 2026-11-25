@@ -6,6 +6,6 @@
 # google_oauth_client_id     = "xxxx.apps.googleusercontent.com"
 # google_oauth_client_secret = "xxxx"
 
-# 予算アラート（課金アカウント側の権限が必要）
-# enable_budgets  = true
+# 予算アラートを作る課金アカウント（空なら、プロジェクトに紐付いている課金アカウントを使う）
+#   予算アラート・監査アラートを作るかどうか・金額・通知先は platform/config.json で決める
 # billing_account = "XXXXXX-XXXXXX-XXXXXX"

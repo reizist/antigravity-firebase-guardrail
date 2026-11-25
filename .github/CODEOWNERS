@@ -2,6 +2,8 @@
 # レビュー担当（docs/platform_design.md §5）
 #   エンジニア組織のレビューが必須のもの: 基盤（platform/）・Security Rules・CI・Skill・依存の設定
 #   それ以外の apps/<app>/** は、アプリのオーナーが自分たちでマージしてよい（Tier 0）
+#   セルフサービスの台帳（platform/catalog/self-service/）も、レビューなしでマージしてよい
+#   （標準の型から外れた内容は CI のポリシーチェックが止める。docs/platform_design.md §3.4）
 #
 # テンプレートからコピーしたら、下の所有者を自分の組織のチームに書き換える
 #   例: @your-org/platform-engineers
@@ -9,6 +11,8 @@
 # ==============================================================================
 
 /platform/                  @reizist
+# 所有者を書かない行は、上の行の指定を外す（セルフサービスの台帳はレビュー不要。README だけはレビューする）
+/platform/catalog/self-service/*.yaml
 /apps/*/firestore.rules     @reizist
 /apps/*/storage.rules       @reizist
 /scripts/                   @reizist

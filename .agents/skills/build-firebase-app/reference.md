@@ -22,7 +22,8 @@
 apps/<app>/
 ├── firebase.json            # 見本から写し、site / database / codebase を自分の名前にする
 ├── .firebaserc              # {"projects": {"default": "demo-<app>", "emulator": "demo-<app>"}}
-├── firestore.rules          # 新しく書く（下の雛形から）
+├── firestore.rules          # 独自の Rules（rules_template: custom）のときだけ。新しく書く（下の雛形から）
+├── firestore.standard.rules # 標準テンプレートのときだけ。platform/rules-templates/<名前>.rules をそのまま写す（書き換えない）
 ├── firestore.indexes.json   # 複合インデックス・TTL が要るときに書く（なければ {"indexes": [], "fieldOverrides": []}）
 ├── web/                     # 画面（素の TypeScript ＋ esbuild。依存は firebase だけ）
 │   ├── package.json         # 見本から写し、name を @fga/<app>-web にする
@@ -43,9 +44,20 @@ apps/<app>/
     └── test/                # Vitest（ロジックの単体テスト）
 ```
 
-`firebase.json` で変えるのは 3 か所だけ：`hosting.site`（`<site_prefix>-<app>`）、`firestore[].database`（`<app>`）、`functions[].codebase`（`<app>`）。`storage` や `hosting.rewrites` で関数を呼ぶ設定は足さない。
+`firebase.json` で変えるのは 3 か所だけ：`hosting.site`（`<site_prefix>-<app>`）、`firestore[].database`（`<app>`）、`functions[].codebase`（`<app>`）。標準テンプレートのアプリは、もう 1 か所 `firestore[].rules` を `firestore.standard.rules` にする。`storage` や `hosting.rewrites` で関数を呼ぶ設定は足さない。
 
 ## Security Rules の雛形（`firestore.rules`）
+
+標準テンプレート（`internal-team-collab` / `internal-author-only`）で足りるアプリは、この節は要らない。テンプレートが許すのは次の形だけなので、画面と関数をそれに合わせる。
+
+| コレクション | 書けること |
+|---|---|
+| `items/{id}` | 作成時に `createdBy` に自分のメールアドレス（小文字）を入れる。項目は 30 個まで。`createdBy` は後から変えられない |
+| `requests/{id}` | 処理の依頼。`requestedBy` に自分のメールアドレス、`status: "pending"` で作成だけできる（項目は 15 個まで）。結果は関数が書く |
+| `config/{id}` | 全員が読める設定。変更は admin だけ |
+| `members/{email}` | 役割（`viewer` / `editor` / `admin`）。変更は admin だけ |
+
+独自の Rules を書くとき（`rules_template: custom`）は、下の雛形から始める。
 
 `isInternal()` の 3 つの条件と、ドメインの書き方（`.` を `[.]` にする）は変えない。ドメインは `platform/config.json` の `internal_domain` と同じにする。**すべての `allow` は、`isInternal()` か、それを必ず通る関数（`isEditor()` など）を `&&` の先頭に置く**（`||` で別の条件を並べない）。
 

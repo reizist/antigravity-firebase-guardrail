@@ -89,7 +89,10 @@ locals {
     "roles/serviceusage.apiKeysAdmin",
     "roles/storage.admin",
     "roles/logging.configWriter",
-    "roles/iam.roleAdmin", # デプロイ SA のカスタムロール（fgaDeployerExtras）
+    "roles/monitoring.alertPolicyEditor",         # データベース作成の監査アラート
+    "roles/monitoring.notificationChannelEditor", # アラートの通知先（メール・Pub/Sub）
+    "roles/pubsub.admin",                         # 予算・監査アラートの通知先トピック（publish の権限を付けるため admin）
+    "roles/iam.roleAdmin",                        # デプロイ SA のカスタムロール（fgaDeployerExtras）
   ]
 }
 
@@ -98,6 +101,16 @@ resource "google_project_iam_member" "terraform_sa_roles" {
   project  = local.effective_project_id
   role     = each.key
   member   = "serviceAccount:${google_service_account.terraform_sa.email}"
+}
+
+# 3b. 予算アラートを作る権限（課金アカウント側）
+#     実行する人に課金アカウントの IAM を変える権限がなければ、ここで失敗する。
+#     その環境では platform/config.json に "enable_budgets": false を書く（予算アラートを作らない）
+resource "google_billing_account_iam_member" "terraform_sa_budgets" {
+  count              = local.enable_budgets && var.billing_account != "" ? 1 : 0
+  billing_account_id = var.billing_account
+  role               = "roles/billing.costsManager"
+  member             = "serviceAccount:${google_service_account.terraform_sa.email}"
 }
 
 # 4. エンジニア組織（と GitHub Actions 経由の自分自身）だけが Terraform SA を借用できる

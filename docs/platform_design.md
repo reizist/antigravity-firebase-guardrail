@@ -32,7 +32,7 @@
 
 | Tier | 例 | 扱うデータ | 置き場所 | 構成 | 公開までの流れ |
 |---|---|---|---|---|---|
-| **0：セルフサービス** | **news-watcher**、社内リンク集、アンケート集計 | 社内一般（個人情報を含まない） | 共有 PJ | Hosting（静的）＋ Firestore（アプリ専用 DB）＋ Functions（定期実行・Firestore トリガーのみ） | 台帳に登録 → push → CI チェック → 自動デプロイ（**Rules の変更だけはエンジニア組織がレビューして Terraform で反映**） |
+| **0：セルフサービス** | **news-watcher**、社内リンク集、アンケート集計 | 社内一般（個人情報を含まない） | 共有 PJ | Hosting（静的）＋ Firestore（アプリ専用 DB）＋ Functions（定期実行・Firestore トリガーのみ） | 台帳に登録 → push → CI チェック → 自動デプロイ。標準の Rules テンプレートを使い、シークレットも外部への送信もないアプリは、データベースの払い出しまで承認なし（[§3.4](#34-承認待ちを減らす2-つのレーン予算データの持ち出し対策)）。**独自の Rules・シークレット・外部への送信があるときだけ、エンジニア組織がレビューして Terraform で反映** |
 | **1：軽いレビュー** | 部署内の申請・承認フロー | 社員名・メールアドレス程度 | 共有 PJ | Tier 0 ＋ Storage（アプリ専用バケット） | エンジニアが Rules・IAM をレビュー |
 | **2：エンジニア伴走** | **経費精算** | 金額・領収書・口座情報など | **専用 PJ** | Tier 1 ＋ 保存期間の設定・監査ログ・必要に応じて Cloud Run ＋ IAP | 設計レビュー・本番前チェック |
 
@@ -92,7 +92,7 @@ Firebase は、1 つのプロジェクトの中で次のものを複数持てる
 
 | 項目 | 内容 |
 |---|---|
-| 書く人 | 業務部門。`apps/<app>/firestore.rules`（Tier 1 以上は `storage.rules` も） |
+| 書く人 | 業務部門。`apps/<app>/firestore.rules`（Tier 1 以上は `storage.rules` も）。標準テンプレート（`platform/rules-templates/`）で足りるアプリは書かない（[§3.4](#34-承認待ちを減らす2-つのレーン予算データの持ち出し対策)） |
 | テスト | アプリの CI でエミュレータを使って Rules のユニットテストを実行し、ポリシーチェック（全開放の禁止、`isInternal()` の必須など）も行う |
 | レビュー | CODEOWNERS で `apps/*/firestore.rules` と `apps/*/storage.rules` はエンジニア組織のレビューを必須にする |
 | 反映 | マージされると platform の CI が `terraform apply` する。Terraform は `apps/<app>/firestore.rules` をファイルとして読み、`google_firebaserules_ruleset` と `google_firebaserules_release`（リリース名 `cloud.firestore/<app>`）を作る |
@@ -124,7 +124,40 @@ resource "google_firebaserules_release" "firestore" {
 ```
 
 > [!NOTE]
-> この結果、Tier 0 のアプリでも **Rules の変更だけはエンジニア組織のレビューが必要** になる。画面・関数・インデックスの変更は、これまでどおり業務部門だけで出せる。Rules はデータ漏えいに直結する唯一の経路なので、ここだけ人の目を入れる。運用に慣れてきたら、ポリシーチェックが全部通る「小さな変更」は自動で承認することも検討する。
+> Rules はデータ漏えいに直結するので、独自の `firestore.rules` の変更にはエンジニア組織のレビューを残す。画面・関数・インデックスの変更は、業務部門だけで出せる。一方で、アプリを 1 つ作るたびにレビュー待ちになると、また人が詰まる。そこで次節のとおり、**事前に承認した標準の Rules テンプレートを使う Tier 0 のアプリは、CI の検査を通ればデータベースの払い出しまで承認なしで反映する**。
+
+### 3.4 承認待ちを減らす：2 つのレーン・予算・データの持ち出し対策
+
+**1. 2 つのレーン（台帳を 2 か所に分ける）**
+
+| | セルフサービス | エンジニア確認 |
+|---|---|---|
+| 台帳 | `platform/catalog/self-service/<app>.yaml`（1 アプリ 1 ファイル） | `platform/catalog/apps.yaml` |
+| 置けるアプリ | Tier 0、`data_class` が `public` / `internal`、`handles_pii: false`、`rules_template` が標準テンプレート（`internal-team-collab` / `internal-author-only`）、`secrets` と `external_egress` なし、オーナーが社内ドメイン | それ以外（独自の `firestore.rules`、シークレット、外部への送信、Tier 1） |
+| PR のレビュー | 不要（CODEOWNERS の対象から外している） | エンジニア組織（CODEOWNERS） |
+| 型から外れたら | CI のポリシーチェックが違反にする（`BLOCKED`）。Terraform の precondition でも止める | — |
+| 反映（`terraform apply`） | 承認なし。ただし plan の中身が「そのアプリのテナントの作成・変更」だけのとき（`platform/policies/plan-guard.mjs`） | Environment `platform` の承認の後 |
+| 判定の表示 | `AUTO_APPROVE_ELIGIBLE` | `ENGINEER_REVIEW_REQUIRED`（理由つき） |
+
+- レーンを **ファイルの場所** で分けるのは、GitHub の CODEOWNERS がパス単位でしか指定できないため。場所で分けたうえで、置いてよい内容かどうかを CI が確かめる。
+- 標準テンプレートは `platform/rules-templates/*.rules`。Terraform がこのファイルをそのまま反映する。アプリのディレクトリには、エミュレータ用の写し（`firestore.standard.rules`）だけを置く（firebase-tools は、アプリのディレクトリの外にある Rules を読めないため）。写しがテンプレートと違えば CI が止める。本番に反映されるのは常にテンプレートのほう。
+- 承認なしの反映は、plan を取り直して検査し、**検査した plan そのもの** を apply する。`main` にまだ承認されていない別の変更（基盤・他のアプリ）が残っていれば plan に現れるので、自動では反映せず、承認つきのレーンに回る。削除だけの変更と、データベースの作り直しも自動では反映しない。アプリを足すと必ず変わる共通のリソース（台帳の検証 `terraform_data.catalog_check` と、Auth の許可ドメイン）は、変わり方がそのアプリの分だけであることを確かめて認める。
+- 残るリスク：セルフサービスの台帳はレビューなしで変更できるので、他のセルフサービスのアプリの `owners` / `admins` を書き換えられる（対象は個人情報を持たない Tier 0 のアプリだけ。変更は Git の履歴と監査ログに残る）。
+
+**2. 予算アラート（初回構築で作る）**
+
+- `platform/terraform/budget.tf` が、共有プロジェクト全体とアプリ別（ラベル `app=<id>`。台帳の `budget_jpy`）の月額予算を作り、実績 50% / 90% / 100% と予測 100% で、Pub/Sub トピック `fga-budget-alerts`・メール・課金アカウントの管理者に通知する。
+- **予算アラートは通知だけで、課金は止まらない。** 共有プロジェクトの課金アカウントを外すと、同居する全アプリが止まる。上限そのものは、関数の `maxInstances` と API のクォータで決める。止める仕組みを足すなら、Pub/Sub を購読して該当アプリの関数だけを止める。
+- 予算の作成には課金アカウント側の権限が要る。bootstrap が Terraform SA に `roles/billing.costsManager` を付ける。もらえない環境だけ、`platform/config.json` の `enable_budgets` を `false` にする。
+
+**3. データの持ち出し対策（4 層）**
+
+| 層 | 内容 |
+|---|---|
+| 作る前の確認（Skill） | `build-firebase-app` が、コードを書く前に、個人情報・社外秘・外部への送信・保持期間を確かめる。当てはまれば Tier 1 / 2 に回す |
+| PR の注意と検査（CI） | `ci.yml` が PR に、データの取り扱いの注意と判定をコメントする。ポリシーチェックは、Tier 0 での `confidential`・`handles_pii: true`、HTTP 関数、全開放の Rules、秘密情報の直書きを違反にし、`safeFetch` を通さない `fetch()` をエンジニア確認に回す（セルフサービスでは違反）。一時的なデータは、台帳の `ttl_collections` で TTL（`expiresAt`）を付けられる |
+| データベース作成の監査アラート（Terraform） | `platform/terraform/audit_alerts.tf`。データベースの作成は、追加料金なしで記録される管理アクティビティ監査ログ（`FirestoreAdmin.CreateDatabase`）に残る。ログの一致で通知するアラートを 2 つ作る：①データベースが作られた、②Terraform SA 以外が作った。通知先は Pub/Sub トピック `fga-governance-alerts` とメール |
+| 発展（必要な組織だけ） | 外部への通信をネットワークで絞る（Direct VPC Egress ＋ Secure Web Proxy の許可ドメイン）、誤って入った個人情報を探す（Sensitive Data Protection の定期スキャン）。Firestore のデータアクセス監査ログをすべて有効にすると、読み書きの量に応じてログの費用が増える |
 
 ---
 
@@ -136,7 +169,7 @@ resource "google_firebaserules_release" "firestore" {
 |---|---|---|
 | 共有 PJ の作成・課金紐付け・使える API・組織ポリシー | ✅ | |
 | Firebase Auth（Identity Platform・Google ログイン・ドメイン制限） | ✅ | |
-| テナントの払い出し（Hosting サイト・Firestore DB・Web アプリ登録・実行 SA・シークレットの入れ物・予算アラート） | ✅（台帳 `apps.yaml` に 1 件追加するだけ） | 台帳への追加 PR を出す |
+| テナントの払い出し（Hosting サイト・Firestore DB・TTL・Web アプリ登録・実行 SA・シークレットの入れ物・予算アラート） | ✅（台帳に 1 件追加するだけ） | 台帳への追加 PR を出す（標準の型なら `self-service/` に置き、レビューなしで反映される） |
 | 共通の関数（Auth の blocking function など）＝ codebase `platform` | ✅ | |
 | **Security Rules の本番への反映**（Firestore / Storage。Rules がまだないアプリの全拒否も含む） | ✅（レビューしてから Terraform で反映） | Rules を書いてテストし、PR を出す |
 | 画面、インデックス、関数のコード、定期実行のスケジュール | | ✅ |
@@ -163,14 +196,15 @@ PR では [`platform/policies/check.mjs`](../platform/policies/check.mjs)（`pnp
 
 | チェック | 内容 |
 |---|---|
-| 台帳 | `platform/catalog/apps.yaml` に登録済みで、スキーマどおりか（オーナー・部署・Tier・データ区分・有効期限）。台帳はこのファイル 1 つだけで、アプリのディレクトリには置かない |
+| 台帳 | `platform/catalog/apps.yaml` か `platform/catalog/self-service/<app>.yaml` に登録済みで、スキーマどおりか（オーナー・部署・Tier・データ区分・`handles_pii`・`rules_template`・有効期限）。Tier 0 で `confidential`・`handles_pii: true` は不可。アプリ数は 30 まで。台帳はアプリのディレクトリには置かない |
+| レーン | `self-service/` のアプリが標準の型に収まっているか（[§3.4](#34-承認待ちを減らす2-つのレーン予算データの持ち出し対策)）。アプリごとの判定（`AUTO_APPROVE_ELIGIBLE` / `ENGINEER_REVIEW_REQUIRED` / `BLOCKED`）を、PR にコメントする |
 | 担当範囲 | `firebase.json` が参照しているのは、自分の Hosting サイト・Firestore DB・codebase だけか |
 | 関数 | 全関数に `serviceAccount: app-<app>@`、`region: asia-northeast1`、`maxInstances`、`labels.app` が指定されているか。関数がアプリ名のグループで export されているか。**Tier 0 では `onRequest` / `onCall`（HTTP 関数）を使っていないか** |
-| Rules | `allow read, write: if true;` のような全開放がないか。全ルールが社内ドメインの確認（`isInternal()`）を通っているか。Rules のユニットテスト（エミュレータ）が通るか。**本番への反映は platform の CI（Terraform）が行う**（[§3.3](#33-security-rules-は-terraform-で反映する)） |
+| Rules | `allow read, write: if true;` のような全開放がないか。全ルールが社内ドメインの確認（`isInternal()`）を通っているか（標準テンプレートも同じ検査を通す）。標準テンプレートの写しが、テンプレートと同じ中身か。Rules のユニットテスト（エミュレータ）が通るか。**本番への反映は platform の CI（Terraform）が行う**（[§3.3](#33-security-rules-は-terraform-で反映する)） |
 | 秘密情報 | gitleaks で秘密情報が混入していないか。`firebase.json` や `web/` に Webhook URL などが書かれていないか |
 | 依存パッケージ | `pnpm install --frozen-lockfile`（ロックファイルと違えば失敗）、OSV-Scanner でロックファイルを確認（既知の脆弱性・悪性パッケージ）、**依存の許可リスト**（テンプレートにない依存を追加していないか。追加はエンジニア組織のレビューが必要） |
 
-CODEOWNERS でレビュー担当を分ける：`platform/**` と `apps/*/firestore.rules`・`apps/*/storage.rules` はエンジニア組織、それ以外の `apps/<app>/**` はそのアプリのオーナー（Tier 0 なら自分たちでマージしてよい）。
+CODEOWNERS でレビュー担当を分ける：`platform/**` と `apps/*/firestore.rules`・`apps/*/storage.rules` はエンジニア組織、それ以外の `apps/<app>/**` と `platform/catalog/self-service/*.yaml` はそのアプリのオーナー（Tier 0 なら自分たちでマージしてよい）。
 
 ---
 
@@ -185,11 +219,11 @@ CODEOWNERS でレビュー担当を分ける：`platform/**` と `apps/*/firesto
 | HTTP 関数を作らない（Tier 0） | 画面からは Firestore に書き込むだけにし、処理は Firestore トリガーと定期実行の関数で行う | `allUsers` の付与が必要になること（組織ポリシーとぶつかる）、不正な呼び出し | 2 |
 | App Check | reCAPTCHA Enterprise で、自分たちのアプリ以外からの Firestore アクセスを拒否 | 公開されている Web API キーの悪用 | 3 |
 | シークレット | Secret Manager に保存し、関数では `defineSecret` で読む | コードや Git への秘密情報の混入 | 2 |
-| コスト | PJ 全体の予算アラートに加え、ラベル `app=<app>` 単位の予算アラート（台帳の `budget_jpy`）。関数の `maxInstances` と、1 回あたりの Gemini 呼び出し件数の上限。予算の作成には課金アカウント側の権限が要るため、既定では作らない（`enable_budgets`） | 高額請求 | 1 / 3 |
+| コスト | PJ 全体の予算アラートに加え、ラベル `app=<app>` 単位の予算アラート（台帳の `budget_jpy`）。関数の `maxInstances` と、1 回あたりの Gemini 呼び出し件数の上限。予算アラートは初回構築で作り、Pub/Sub・メールに通知する（通知だけで、課金は止まらない。[§3.4](#34-承認待ちを減らす2-つのレーン予算データの持ち出し対策)） | 高額請求 | 1 / 3 |
 | ライフサイクル | 台帳の有効期限（`expires`）とオーナーを毎月棚卸し。期限切れのアプリはオーナーに通知した後で停止 | 誰も管理していないアプリが残り続けること | 4 |
 | Web API キー | アプリごとに専用のキーを作り、自分のサイト（とプレビューチャネル）のリファラと Firebase の API だけに絞る | 公開されているキーの、他のサイト・他の API での悪用 | 1 |
-| 監査 | Firestore のデータアクセス監査ログ、アプリ単位の Log View | 事故が起きたときに追跡できないこと | 3 |
-| データ保持 | 記事などの一時データは Firestore TTL で自動削除 | 不要なデータの溜め込み | 2 |
+| 監査 | データベースの作成を、管理アクティビティ監査ログからその場で通知する（`audit_alerts.tf`）。Firestore のデータアクセス監査ログ、アプリ単位の Log View | 台帳を通さないデータベース、事故が起きたときに追跡できないこと | 1（作成の通知）/ 3 |
+| データ保持 | 記事などの一時データは Firestore TTL で自動削除（台帳の `ttl_collections`、または `firestore.indexes.json`） | 不要なデータの溜め込み | 2 |
 | ソフトウェアサプライチェーン | pnpm（インストール時のスクリプトを既定で止める・公開から 7 日たった版だけを入れる）、取得先は Artifact Registry の npm リモートリポジトリだけ、CI で OSV-Scanner と依存の許可リスト（[§7.2](#72-パッケージ管理とサプライチェーン対策pnpm)） | 乗っ取られたパッケージ・悪性パッケージの混入 | 1 / 2 / 3 |
 
 ---
@@ -309,3 +343,8 @@ always-auth=true
 | Functions の実行環境 `nodejs24` | ローカルは Node.js 24。Cloud Functions for Firebase（第 2 世代）で `nodejs24` が GA で、firebase-tools と firebase-functions が対応しているか | Phase 2 で確認する。使えなければ実行環境だけ `nodejs22` にする（ローカルとの差は小さい） |
 | `minimumReleaseAge` と緊急のセキュリティ修正 | 7 日待つ設定のため、脆弱性の修正版もすぐには入らない | `minimumReleaseAgeExclude` で、その修正版だけを例外にする（エンジニア組織が判断する） |
 | Firebase Studio などクラウド IDE の提供状況 | 非エンジニアの開発環境の候補 | 提供状況を確認してから判断する（基本は Antigravity ＋ このリポジトリの Skill） |
+| 2 つのレーンの自動反映 | `deploy.yml` の自動反映（`platform-apply-auto`）と `plan-guard.mjs` は、単体テストと構文の検査だけで、GitHub Actions の上では動かしていない | 実際のリポジトリで、セルフサービスのアプリを 1 つ追加して確かめる。確かめるまでは、最初の数回は plan を目で見る |
+| Environment の Required reviewers | 承認つきの反映は、Environment `platform` の Required reviewers に頼っている。private リポジトリでは、GitHub のプランによって設定できない | 設定できない環境では、PR のレビュー（CODEOWNERS）だけが歯止めになる。`deploy.yml` を手動実行（`workflow_dispatch`）だけにする運用も検討する |
+| 予算アラートの権限 | 予算の作成には、課金アカウント側の `billing.budgets.create` が要る。bootstrap が Terraform SA に `roles/billing.costsManager` を付けるが、実行する人に課金アカウントの IAM を変える権限がないと失敗する | 課金アカウントの管理者に付けてもらう。もらえなければ `enable_budgets: false` |
+| 監査アラートの Pub/Sub 通知 | Cloud Monitoring の通知用サービスエージェント（`service-<番号>@gcp-sa-monitoring-notification`）に、トピックへの publish を付ける。このサービスエージェントは最初の Pub/Sub 通知チャネルを作ったときにできるため、初回の apply で権限の付与が失敗することがある | 1〜2 分待って再実行する |
+| `ttl_collections` と `firestore.indexes.json` | TTL を Terraform（`google_firestore_field`）と `firebase deploy --only firestore:indexes`（`fieldOverrides`）の両方から同じ項目に設定すると、互いに上書きする | 1 つのコレクションの TTL は、どちらか一方で設定する（news-watcher は `firestore.indexes.json` の `expireAt`） |

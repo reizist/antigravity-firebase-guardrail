@@ -36,33 +36,36 @@ flowchart LR
 
     subgraph DEV["Engineer (once)"]
         P1["'Set up the initial Firebase<br/>environment from this repo'"]
-        S1["init-firebase-platform skill<br/>shared project · Terraform ·<br/>WIF · least-privilege SAs"]
+        S1["init-firebase-platform skill<br/>shared project · Terraform · WIF ·<br/>least-privilege SAs · budget and audit alerts"]
         P1 --> S1
     end
 
     subgraph USER["App builder (any number of times)"]
         P2["'Build an app that<br/>summarizes ...'"]
-        S2["build-firebase-app skill<br/>register in catalog · no HTTP functions ·<br/>verify on emulator · open a PR"]
+        S2["build-firebase-app skill<br/>check the data first · register in catalog ·<br/>no HTTP functions · verify on emulator · open a PR"]
         P2 --> S2
     end
 
     REPO --> S1
     REPO --> S2
     S1 -->|"foundation"| ENV[("Shared Firebase project<br/>one isolated tenant per app")]
-    S2 -->|"CI checks + Rules review"| ENV
+    S2 -->|"standard apps: CI checks only<br/>others: engineer review"| ENV
 ```
 
 ## ✨ What it does
 
 | Guardrail | What it prevents | Where |
 |---|---|---|
-| **Only Terraform deploys Security Rules** | Rules permissions can only be granted project-wide. Give them to an app's deploy path and it can open every other app's database | The deployer SA has no permission to release `firebaserules.*`. `apps/*/firestore.rules` requires CODEOWNERS review; the platform job in `deploy.yml` applies it (with approval) |
+| **Two lanes instead of a review queue** | Every new app waiting for an engineer. Apps that fit the standard shape (Tier 0, no personal data, a pre-approved Rules template, no secrets, no outbound calls) are registered in `platform/catalog/self-service/` and get their database without review or approval. Everything else goes through `apps.yaml` and engineer review | `pnpm policy` (lane verdict, posted on the PR), `plan-guard.mjs` (auto-apply only when the plan touches nothing but that app's tenant), CODEOWNERS |
+| **Data check before any code** | Personal or confidential data landing in a self-service database | Skill (asks about personal data, outbound calls, retention) + `pnpm policy` (blocks `handles_pii: true` or `confidential` in Tier 0, flags `fetch()` that bypasses `safeFetch`) + PR checklist |
+| **Budget alerts and database-creation alerts** | Runaway cost; databases created outside the catalog. Budgets notify Pub/Sub and email (they notify only — they do not stop billing). Every `CreateDatabase` audit log entry raises an alert, and one made by anyone but the Terraform SA raises a critical one | `budget.tf`, `audit_alerts.tf` (both on by default) |
+| **Only Terraform deploys Security Rules** | Rules permissions can only be granted project-wide. Give them to an app's deploy path and it can open every other app's database | The deployer SA has no permission to release `firebaserules.*`. Custom `apps/*/firestore.rules` requires CODEOWNERS review and is applied by the platform job in `deploy.yml` with approval; standard templates live in `platform/rules-templates/` |
 | **No HTTP functions in Tier 0** | Missing auth checks and accidental public exposure. The UI only writes to Firestore; Firestore triggers and `onSchedule` do the work | Skill + `pnpm policy` (detects `onRequest` / `onCall`) |
 | **Supply-chain protection** | Hijacked packages and `postinstall` abuse. Cloud Functions reinstalls dependencies in the cloud, so functions are bundled into one file with esbuild and only two dependencies are installed cloud-side | `pnpm-workspace.yaml`, dependency allowlist, OSV-Scanner |
 | **No `(default)` database or default bucket** | Writing to a shared location when someone forgets to name the database | Terraform never creates them, and the deployer SA cannot create databases |
 | **Per-tenant runtime SA with IAM Conditions** | A function reading another app's database or secrets | `modules/app-tenant` |
 | **Keyless deploys (WIF)** | Production credentials on a laptop. Only workflows running on `main` can impersonate the service accounts | `bootstrap/github_wif.tf`, `deploy.yml` |
-| **App catalog with expiry dates** | Apps that nobody owns living on forever | `platform/catalog/apps.yaml`, `pnpm policy` (an expired app fails CI) |
+| **App catalog with expiry dates** | Apps that nobody owns living on forever | `platform/catalog/`, `pnpm policy` (an expired app fails CI) |
 
 Design details are in [docs/platform_design.md](./docs/platform_design.md) (Japanese). Section 9 of that document lists the places where a least-privilege `firebase deploy` got stuck, and the fix for each.
 
@@ -73,7 +76,7 @@ Design details are in [docs/platform_design.md](./docs/platform_design.md) (Japa
 1. Copy this repository into your own GitHub account with **Use this template**, then clone it. Make it private if you use it for work.
 2. Open the repository in Antigravity (or the AI agent you use) and ask:
 
-   > Using this repository and the initial setup skill, build the initial environment for a governed, shared Firebase project. Always show me the diff and ask before applying anything to the cloud.
+   > Using this repository and the initial setup skill, build the initial environment for a governed, shared Firebase project, including budget alerts and database-creation audit alerts. Always show me the diff and ask before applying anything to the cloud.
 
    To call the skill explicitly, use `/init-firebase-platform`. To do it by hand, follow [docs/runbook.md](./docs/runbook.md) (Japanese).
 
@@ -84,12 +87,13 @@ You need: a Google Cloud account that can enable billing, `gcloud`, `terraform`,
 1. Open the repository in Antigravity.
 2. Describe the app you want:
 
-   > Use this repository's app-building skill to make a Firebase app. For my team, I want to summarize the RSS feeds of the official blogs we check every morning and post them to Slack.
+   > Use this repository's app-building skill to make a Firebase app. I want a shared link collection and memo tool for my team.
 
-3. Try it on the local emulator, which never connects to production, and say what you want changed.
-4. When it looks right, ask the agent to open a pull request on GitHub.
+3. Answer the agent's questions about the data (personal data, outbound calls, how long to keep it). It asks before writing any code.
+4. Try it on the local emulator, which never connects to production, and say what you want changed.
+5. When it looks right, ask the agent to open a pull request on GitHub.
 
-App builders never touch the Google Cloud console or Terraform, and their machine holds no production deploy permission. Engineers basically review only **the catalog (`apps.yaml`) and the Security Rules (`firestore.rules`) diff**. CI publishes the app after the merge.
+App builders never touch the Google Cloud console or Terraform, and their machine holds no production deploy permission. An app that fits the standard shape is published by CI after the merge with no engineer in the loop. Engineers review only the exceptions: **the reviewed catalog (`apps.yaml`) and custom Security Rules (`firestore.rules`)**, which is where apps with secrets, outbound calls (like the `news-watcher` sample), or their own access rules go.
 
 You need: a GitHub account, Antigravity, Node.js 24, `pnpm`, and Java 21 or later (for the emulator).
 
@@ -110,9 +114,12 @@ You need: a GitHub account, Antigravity, Node.js 24, `pnpm`, and Java 21 or late
 │           └── reference.md                 #   naming rules, Rules and function skeletons
 ├── platform/
 │   ├── config.json                          # The one place for environment values (project ID, domain, ...)
-│   ├── catalog/apps.yaml                    # App catalog: add an entry and a tenant is provisioned
-│   ├── terraform/                           # Shared project, WIF, deployer SA, tenants (modules/app-tenant)
-│   └── policies/                            # CI policy check and dependency allowlist
+│   ├── catalog/
+│   │   ├── apps.yaml                        # Apps that engineers review (custom Rules, secrets, outbound calls)
+│   │   └── self-service/                    # Standard-shape Tier 0 apps, one file each: no review, auto-applied
+│   ├── rules-templates/                     # Pre-approved standard Security Rules
+│   ├── terraform/                           # Shared project, WIF, deployer SA, budget and audit alerts, tenants
+│   └── policies/                            # CI policy check, lane verdict, plan guard, dependency allowlist
 ├── apps/
 │   └── news-watcher/                        # First app: scores and summarizes RSS with Gemini, posts to Slack
 ├── scripts/                                 # bootstrap / deploy / destroy
@@ -123,8 +130,8 @@ You need: a GitHub account, Antigravity, Node.js 24, `pnpm`, and Java 21 or late
 
 | Skill | For | What it does |
 |---|---|---|
-| [`init-firebase-platform`](./.agents/skills/init-firebase-platform/SKILL.md) | Engineers | Builds the shared project, WIF, least-privilege SAs, and tenants, confirming each diff first |
-| [`build-firebase-app`](./.agents/skills/build-firebase-app/SKILL.md) | App builders | Registers the app in the catalog, implements it within the rules, verifies it on the emulator, and opens a PR |
+| [`init-firebase-platform`](./.agents/skills/init-firebase-platform/SKILL.md) | Engineers | Builds the shared project, WIF, least-privilege SAs, budget and audit alerts, and tenants, confirming each diff first |
+| [`build-firebase-app`](./.agents/skills/build-firebase-app/SKILL.md) | App builders | Checks what data the app handles, registers it in the right catalog, implements it within the rules, verifies it on the emulator, and opens a PR |
 
 ## 📊 Verification status
 
@@ -133,8 +140,9 @@ You need: a GitHub account, Antigravity, Node.js 24, `pnpm`, and Java 21 or late
 | Shared platform and tenant provisioning | Verified on a real project (*) | Terraform (creates a tenant's 7 resources at once), no `(default)` database, Rules deployed by Terraform, Artifact Registry npm remote repository |
 | Least-privilege deploy and news-watcher | Verified on a real project (*) | Deployer SA + `scripts/deploy_app.sh`, pnpm protections + single-file esbuild bundle, news-watcher (Gemini scoring and summaries, sharing to Slack) |
 | Parts generalized for this public release | **Static checks only** | Centralizing settings in `platform/config.json`, restricting WIF per branch (`attribute.repo_ref`), scripts rewritten in bash, the `deploy.yml` workflow. `terraform validate`, unit tests, the policy check, and CI all pass, but this exact form has not been applied to a fresh project |
-| CI policy check | Implemented (simple) | Catalog, `firebase.json` scope, no HTTP functions, Rules, dependency allowlist, secrets. It uses strings and regular expressions, not a parser |
-| Not there yet | Not implemented | Rules unit tests on the emulator, gitleaks, a real-project check of isolation with a second tenant, Storage buckets for Tier 1, App Check |
+| CI policy check | Implemented (simple) | Catalog, lane verdict, `firebase.json` scope, no HTTP functions, Rules, dependency allowlist, secrets. It uses strings and regular expressions, not a parser |
+| Two lanes, budget alerts, database-creation alerts, TTL | **Local checks only** | `terraform validate`, unit tests for the policy check and the plan guard, and both standard Rules templates exercised on the Firestore emulator (allow/deny cases). Not yet applied to a real project, and the auto-apply job in `deploy.yml` has not run on GitHub Actions |
+| Not there yet | Not implemented | Rules unit tests in CI, gitleaks, a real-project check of isolation with a second tenant, Storage buckets for Tier 1, App Check |
 
 (*) Verified in the author's test environment, in the form before it was generalized (with the project ID and similar values written directly).
 

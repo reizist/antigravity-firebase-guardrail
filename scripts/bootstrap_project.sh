@@ -43,7 +43,10 @@ ACTIVE_ACCOUNT="$(gcloud auth list --filter=status:ACTIVE --format='value(accoun
 [[ -n "$ACTIVE_ACCOUNT" ]] || { echo "ERROR: gcloud にログインしていません（gcloud auth login）" >&2; exit 1; }
 ORG_ID="${FGA_ORG_ID:-$(gcloud organizations list --format='value(ID)' 2>/dev/null | head -n 1)}"
 FOLDER_ID="${FGA_FOLDER_ID:-}"
-BILLING_ACCOUNT="${FGA_BILLING_ACCOUNT:-$(gcloud billing accounts list --filter='open=true' --format='value(ACCOUNT_ID)' 2>/dev/null | head -n 1)}"
+# 課金アカウント：指定 → 既にあるプロジェクトに紐付いているもの → 開いている課金アカウントの先頭
+#   （予算アラート用に、この課金アカウントの roles/billing.costsManager を Terraform SA に付ける）
+LINKED_BILLING_ACCOUNT="$(gcloud billing projects describe "$PROJECT_ID" --format='value(billingAccountName)' 2>/dev/null | sed 's#^billingAccounts/##' || true)"
+BILLING_ACCOUNT="${FGA_BILLING_ACCOUNT:-${LINKED_BILLING_ACCOUNT:-$(gcloud billing accounts list --filter='open=true' --format='value(ACCOUNT_ID)' 2>/dev/null | head -n 1)}}"
 
 OPERATORS_JSON="$(FGA_OPERATORS="${FGA_OPERATORS:-user:${ACTIVE_ACCOUNT}}" node -e '
   console.log(JSON.stringify(process.env.FGA_OPERATORS.split(",").map((s) => s.trim()).filter(Boolean)));

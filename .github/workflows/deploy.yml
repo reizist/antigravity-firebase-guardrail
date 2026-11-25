@@ -1,13 +1,18 @@
 # ==============================================================================
 # main にマージされた変更を、共有プロジェクトに反映する
-#   platform : platform/** か apps/*/firestore.rules が変わったら、Terraform SA で plan → 承認 → apply
+#   platform : platform/** か apps/*/firestore.rules が変わったら、Terraform SA で plan → apply
 #              （テナントの払い出しと Security Rules の反映。Rules を反映できるのはこの経路だけ）
+#              2 つのレーンがある（docs/platform_design.md §3.4）
+#                承認つき : plan を確認して承認してから apply（Environment "platform"）
+#                自動     : 変わったのがセルフサービスの台帳（platform/catalog/self-service/）だけで、
+#                           plan の中身もそのアプリのテナントの作成・変更だけのとき（plan-guard.mjs）。承認なしで apply
 #   apps     : apps/<app>/** が変わったアプリだけを、デプロイ SA（fga-deployer）で firebase deploy
 #              （Hosting・Functions・インデックス。Rules は含めない）
 #
 # 必要な設定（docs/runbook.md §6）:
 #   - リポジトリの変数 GCP_WIF_PROVIDER（未設定の間は何もしない）
 #   - Environment "platform"（Required reviewers にエンジニア組織。apply の前に plan を確認して承認する）
+#   - 予算アラート・監査アラートの設定は platform/config.json（リポジトリの変数は使わない）
 # 認証は Workload Identity Federation（鍵なし）。SA を借用できるのは main で動くこのワークフローだけ。
 # ==============================================================================
 name: deploy
@@ -41,6 +46,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       platform: ${{ steps.detect.outputs.platform }}
+      self_service_only: ${{ steps.detect.outputs.self_service_only }}
       apps: ${{ steps.detect.outputs.apps }}
       project_id: ${{ steps.detect.outputs.project_id }}
     steps:
@@ -58,6 +64,7 @@ jobs:
           set -euo pipefail
           all_apps() { find apps -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | sort; }
           platform=false
+          self_service_only=false
           apps=""
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
             platform="$INPUT_PLATFORM"
@@ -73,7 +80,12 @@ jobs:
             apps="$(all_apps)"
           else
             changed="$(git diff --name-only "$BEFORE" "$GITHUB_SHA")"
-            if grep -qE '^(platform/|apps/[^/]+/firestore\.rules$)' <<<"$changed"; then platform=true; fi
+            platform_changed="$(grep -E '^(platform/|apps/[^/]+/firestore\.rules$)' <<<"$changed" || true)"
+            if [[ -n "$platform_changed" ]]; then
+              platform=true
+              # 基盤に関わる変更が、セルフサービスの台帳だけか（自動で反映するレーンの候補）
+              if ! grep -qvE '^platform/catalog/self-service/[^/]+$' <<<"$platform_changed"; then self_service_only=true; fi
+            fi
             if grep -qE '^(platform/config\.json|pnpm-lock\.yaml|scripts/deploy_app\.sh)$' <<<"$changed"; then
               # 全アプリのビルド結果・デプロイ方法に関わる変更
               apps="$(all_apps)"
@@ -85,10 +97,11 @@ jobs:
           apps_json="$(for app in $apps; do [[ -d "apps/$app" ]] && echo "$app"; done | jq -R . | jq -sc .)"
           {
             echo "platform=$platform"
+            echo "self_service_only=$self_service_only"
             echo "apps=$apps_json"
             echo "project_id=$(jq -r .project_id platform/config.json)"
           } >> "$GITHUB_OUTPUT"
-          echo "platform=$platform apps=$apps_json"
+          echo "platform=$platform self_service_only=$self_service_only apps=$apps_json"
 
   platform-plan:
     name: platform / terraform plan
@@ -99,12 +112,13 @@ jobs:
     permissions:
       contents: read
       id-token: write
+    outputs:
+      lane: ${{ steps.lane.outputs.lane }}
     env:
       TF_IN_AUTOMATION: "true"
       TF_VAR_google_oauth_client_id: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
       TF_VAR_google_oauth_client_secret: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
-      TF_VAR_enable_budgets: ${{ vars.ENABLE_BUDGETS || 'false' }}
-      TF_VAR_billing_account: ${{ vars.BILLING_ACCOUNT }}
+      PROJECT_ID: ${{ needs.changes.outputs.project_id }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -117,14 +131,26 @@ jobs:
         with:
           terraform_wrapper: false
       - run: terraform -chdir=platform/terraform init -input=false -backend-config="bucket=${PROJECT_ID}-tfstate"
+      - name: terraform plan（承認つきのレーンでは、この内容を確認してから platform-apply を承認する）
+        run: terraform -chdir=platform/terraform plan -input=false -lock-timeout=5m -out=platform.tfplan
+      - name: レーンの判定（承認なしで反映してよい plan か）
+        id: lane
         env:
-          PROJECT_ID: ${{ needs.changes.outputs.project_id }}
-      - name: terraform plan（この内容を確認してから、platform-apply を承認する）
-        run: terraform -chdir=platform/terraform plan -input=false -lock-timeout=5m
+          SELF_SERVICE_ONLY: ${{ needs.changes.outputs.self_service_only }}
+        run: |
+          set -euo pipefail
+          lane=review
+          if [[ "$SELF_SERVICE_ONLY" == "true" ]]; then
+            terraform -chdir=platform/terraform show -json platform.tfplan > "$RUNNER_TEMP/plan.json"
+            if node platform/policies/plan-guard.mjs "$RUNNER_TEMP/plan.json"; then lane=auto; fi
+          fi
+          echo "lane=$lane" >> "$GITHUB_OUTPUT"
+          echo "platform の反映: **$lane**（auto = 承認なし / review = 承認つき）" >> "$GITHUB_STEP_SUMMARY"
 
   platform-apply:
-    name: platform / terraform apply
+    name: platform / terraform apply（承認つき）
     needs: [changes, platform-plan]
+    if: needs.platform-plan.outputs.lane != 'auto'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # Required reviewers を設定した Environment。承認されるまでこのジョブは始まらない
@@ -136,8 +162,7 @@ jobs:
       TF_IN_AUTOMATION: "true"
       TF_VAR_google_oauth_client_id: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
       TF_VAR_google_oauth_client_secret: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
-      TF_VAR_enable_budgets: ${{ vars.ENABLE_BUDGETS || 'false' }}
-      TF_VAR_billing_account: ${{ vars.BILLING_ACCOUNT }}
+      PROJECT_ID: ${{ needs.changes.outputs.project_id }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -150,21 +175,57 @@ jobs:
         with:
           terraform_wrapper: false
       - run: terraform -chdir=platform/terraform init -input=false -backend-config="bucket=${PROJECT_ID}-tfstate"
-        env:
-          PROJECT_ID: ${{ needs.changes.outputs.project_id }}
       - name: terraform apply（テナントの払い出し・Security Rules の反映）
         run: terraform -chdir=platform/terraform apply -input=false -auto-approve -lock-timeout=5m
 
+  platform-apply-auto:
+    name: platform / terraform apply（自動：セルフサービスのアプリだけ）
+    needs: [changes, platform-plan]
+    if: needs.platform-plan.outputs.lane == 'auto'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TF_IN_AUTOMATION: "true"
+      TF_VAR_google_oauth_client_id: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+      TF_VAR_google_oauth_client_secret: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+      PROJECT_ID: ${{ needs.changes.outputs.project_id }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: terraform-sa@${{ needs.changes.outputs.project_id }}.iam.gserviceaccount.com
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_wrapper: false
+      - run: terraform -chdir=platform/terraform init -input=false -backend-config="bucket=${PROJECT_ID}-tfstate"
+      # plan を取り直し、同じ検査を通った plan そのものを apply する（判定の後に main が変わっていても、検査した内容だけが反映される）
+      - name: terraform plan
+        run: terraform -chdir=platform/terraform plan -input=false -lock-timeout=5m -out=platform.tfplan
+      - name: 承認なしで反映してよい plan かを確かめる
+        run: |
+          set -euo pipefail
+          terraform -chdir=platform/terraform show -json platform.tfplan > "$RUNNER_TEMP/plan.json"
+          node platform/policies/plan-guard.mjs "$RUNNER_TEMP/plan.json"
+      - name: terraform apply（セルフサービスのアプリのテナントの払い出し）
+        run: terraform -chdir=platform/terraform apply -input=false -lock-timeout=5m platform.tfplan
+
   apps:
     name: app / ${{ matrix.app }}
-    needs: [changes, platform-apply]
+    needs: [changes, platform-apply, platform-apply-auto]
     # platform の反映が要るときは、その後で（新しいアプリのテナントが先に必要なため）。失敗・却下されたらデプロイしない
     if: >-
       always() &&
       needs.changes.result == 'success' &&
       needs.changes.outputs.apps != '[]' &&
-      (needs.platform-apply.result == 'success' || needs.platform-apply.result == 'skipped') &&
-      (needs.changes.outputs.platform != 'true' || needs.platform-apply.result == 'success')
+      (needs.changes.outputs.platform != 'true' ||
+       needs.platform-apply.result == 'success' ||
+       needs.platform-apply-auto.result == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:

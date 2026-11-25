@@ -38,6 +38,11 @@ output "web_app_id" {
   value       = google_firebase_web_app.app.app_id
 }
 
+output "rules_mode" {
+  description = "反映した Security Rules（標準テンプレートの名前か custom）"
+  value       = local.rules_template
+}
+
 output "web_config" {
   description = "画面（web/）に埋め込む Firebase の設定（公開される値。秘密情報ではない）"
   value = {

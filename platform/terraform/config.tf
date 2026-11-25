@@ -1,7 +1,7 @@
 # ==============================================================================
 # 環境ごとの値は platform/config.json の 1 か所で決める
 #   Terraform・scripts/・CI・アプリのビルド（functions/src/config.ts など）が同じファイルを読む。
-#   ここに書かない値（OAuth クライアント・予算）は terraform.tfvars（Git 管理外）か CI のシークレットで渡す。
+#   ここに書かない値（OAuth クライアント）は terraform.tfvars（Git 管理外）か CI のシークレットで渡す。
 # ==============================================================================
 
 locals {
@@ -24,4 +24,14 @@ locals {
   #   （例: firebase-xxx → fir-xxx）ので、そのときは config.json の auth_handler_domain に
   #   /__/firebase/init.json の authDomain を書く
   auth_handler_domain = try(local.platform_config.auth_handler_domain, "") != "" ? local.platform_config.auth_handler_domain : "${local.project_id}.firebaseapp.com"
+
+  # 予算アラートと DB 作成の監査アラート（どちらも既定で作る。config.json に書かなければ既定値）
+  #   enable_budgets = false にするのは、課金アカウントの権限をもらえない環境だけ
+  enable_budgets         = try(local.platform_config.enable_budgets, true)
+  project_budget_jpy     = try(local.platform_config.project_budget_jpy, 30000)
+  budget_alert_emails    = try(local.platform_config.budget_alert_emails, [])
+  enable_db_audit_alerts = try(local.platform_config.enable_db_audit_alerts, true)
+  security_alert_emails  = try(local.platform_config.security_alert_emails, [])
+  # 課金アカウントは、プロジェクトに紐付いているものを使う（terraform.tfvars の billing_account で上書きできる）
+  billing_account = var.billing_account != "" ? var.billing_account : try(data.google_project.this.billing_account, "")
 }
