@@ -80,7 +80,12 @@ flowchart LR
 
    明示的に呼ぶなら `/init-firebase-platform`。手作業で進めるなら [docs/runbook.md](./docs/runbook.md)。
 
-必要なもの：課金を有効にできる Google Cloud のアカウント、`gcloud`・`terraform`・Node.js 24・`pnpm`。
+必要なもの：有効な Google Cloud 課金アカウント（または課金紐付け済みの既存プロジェクト＋`create_project = false`）、`gcloud`・`terraform`・Node.js 24・`pnpm`。
+
+> [!NOTE]
+> **初回構築で自動化されること／初回だけ手作業が必要なこと**
+> - **自動化（Terraform）**：GCP プロジェクト作成・課金アカウント紐付け（これにより Firebase の Blaze 従量課金プランが自動で有効になるため、Firebase コンソールでのプラン切替は不要）・API 限定有効化・WIF・最小権限 SA・予算／クォータ／DB 作成監査アラート
+> - **初回のみ手作業**：課金アカウント自体がまだ無い場合の事前作成、Firebase コンソールでの **Google ログイン有効化**（OAuth クライアントは API から作れないため。Skill が手順を案内）、および Webhook URL 等のシークレット値登録
 
 ### アプリを作る人（何度でも）
 

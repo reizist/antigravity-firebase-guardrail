@@ -34,7 +34,7 @@ description: Firebase のガバナンス付き共有プロジェクト（ガー�
 |---|---|
 | ツール | `gcloud --version`、`terraform version`（1.5 以上）、`node -v`（24。`.nvmrc`）、`pnpm -v`（`corepack enable pnpm`） |
 | Google Cloud のログイン | `gcloud auth list`。プロジェクトを作成でき、課金アカウントを紐付けられるアカウントか |
-| 組織・課金アカウント | `gcloud organizations list`、`gcloud billing accounts list --filter=open=true`。複数あるときは、どれを使うか聞く |
+| 組織・課金アカウント | `gcloud organizations list`、`gcloud billing accounts list --filter=open=true`。複数あるときは、どれを使うか聞く。**課金アカウント自体が 0 件なら、先に Google Cloud コンソールで作成してもらう**（課金紐付けで Firebase の Blaze プランが自動で有効になる）。個人にプロジェクト作成・課金紐付け権限がない組織では、情シス等から払い出された課金済みプロジェクトを使い `create_project = false` で進める |
 | リポジトリ | このリポジトリが、テンプレートからコピーした依頼者自身のリポジトリか（`git remote -v`）。**業務で使うなら private を勧める**（plan の出力や台帳のメールアドレスが Actions のログに出るため） |
 
 ### 1. 環境の値を決める（まだクラウドは変更しない）

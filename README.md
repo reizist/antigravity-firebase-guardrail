@@ -80,7 +80,12 @@ Design details are in [docs/platform_design.md](./docs/platform_design.md) (Japa
 
    To call the skill explicitly, use `/init-firebase-platform`. To do it by hand, follow [docs/runbook.md](./docs/runbook.md) (Japanese).
 
-You need: a Google Cloud account that can enable billing, `gcloud`, `terraform`, Node.js 24, and `pnpm`.
+You need: an active Google Cloud Billing account (or an existing billing-linked project with `create_project = false`), `gcloud`, `terraform`, Node.js 24, and `pnpm`.
+
+> [!NOTE]
+> **What is automated vs. manual during initial setup**
+> - **Automated (Terraform)**: GCP project creation, Cloud Billing linkage (which automatically enables the Firebase Blaze pay-as-you-go plan—no manual upgrade in Firebase Console), API enablement, WIF, least-privilege SAs, budgets, quotas, and DB audit alerts.
+> - **Manual (once)**: Creating a Cloud Billing account beforehand if you do not have one yet, enabling **Google Sign-In** in Firebase Console (OAuth client creation is not exposed via API; the skill guides you through the exact click path), and registering any app secrets (e.g., Slack webhook URLs) outside chat.
 
 ### App builders (any number of times)
 
